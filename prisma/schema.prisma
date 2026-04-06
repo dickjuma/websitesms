@@ -1,0 +1,277 @@
+// Prisma Schema for PostgreSQL
+// Run: npx prisma init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Admin/User Management
+model Admin {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  role          AdminRole @default(AGENT)
+  isActive      Boolean   @default(true)
+  lastActiveAt  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  assignedLeads Lead[]    @relation("AdminAssignedLeads")
+  messages      Message[] @relation("AgentMessages")
+}
+
+enum AdminRole {
+  ADMIN
+  AGENT
+}
+
+// Lead/Visitor Management
+model Lead {
+  id                String          @id @default(cuid())
+  visitorId         String          @unique
+  name              String?
+  email             String?
+  phone             String?
+  company           String?
+  businessNeed      String?
+  qualification    Qualification   @default(COLD)
+  leadScore         Int             @default(0)
+  status            LeadStatus      @default(NEW)
+  isHumanActive     Boolean         @default(false)
+  aiSummary         String?
+  notes             String?
+  
+  // Session tracking
+  currentSessionId  String?
+  sessionCount      Int             @default(0)
+  
+  // Activity tracking
+  chatDepth         Int             @default(0)
+  lastActivityAt    DateTime        @default(now())
+  
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  // Relations
+  sessions          ChatSession[]
+  messages          Message[]
+  pageVisits        PageVisit[]
+  activityTimeline ActivityLog[]
+
+  assignedToId      String?
+  assignedTo       Admin?           @relation("AdminAssignedLeads", fields: [assignedToId], references: [id])
+}
+
+enum Qualification {
+  HOT
+  WARM
+  COLD
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CONVERTED
+  CLOSED
+  ARCHIVED
+}
+
+// Chat Sessions
+model ChatSession {
+  id                String            @id @default(cuid())
+  leadId            String
+  visitorId         String
+  title             String?
+  status            SessionStatus     @default(ACTIVE)
+  aiSummary         String?
+  messageCount      Int               @default(0)
+  
+  // Message preview
+  lastMessageAt     DateTime?
+  lastMessagePreview String?
+  
+  startedAt         DateTime          @default(now())
+  lastActivityAt    DateTime          @default(now())
+  endedAt           DateTime?
+
+  // Relations
+  lead              Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  messages          Message[]
+
+  @@index([leadId])
+  @@index([visitorId])
+  @@index([status])
+  @@index([lastMessageAt])
+}
+
+enum SessionStatus {
+  ACTIVE
+  PAUSED
+  CLOSED
+}
+
+// Messages
+model Message {
+  id               String        @id @default(cuid())
+  leadId           String
+  sessionId        String
+  sender           MessageSender
+  senderId         String?       // For agent messages
+  message          String        @db.Text
+  
+  // Metadata
+  clientMessageId  String?       // For optimistic updates
+  isRead           Boolean       @default(false)
+  metadata         Json?
+  
+  timestamp        DateTime      @default(now())
+
+  // Relations
+  lead             Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  session          ChatSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  senderAdmin      Admin?         @relation("AgentMessages", fields: [senderId], references: [id])
+
+  @@index([leadId])
+  @@index([sessionId])
+  @@index([timestamp])
+}
+
+enum MessageSender {
+  USER
+  BOT
+  AGENT
+  SYSTEM
+}
+
+// Visitor/Session Tracking
+model Visitor {
+  id            String        @id @default(cuid())
+  visitorId     String        @unique
+  fingerprint   String?
+  ipAddress     String?
+  userAgent     String?
+  deviceType    DeviceType    @default(DESKTOP)
+  browser       String?
+  os            String?
+  timezone      String?
+  country       String?
+  city          String?
+  
+  visitCount    Int           @default(0)
+  firstSeenAt   DateTime      @default(now())
+  lastSeenAt    DateTime      @default(now())
+
+  pageVisits    PageVisit[]
+  sessions      ChatSession[]
+  leads         Lead[]
+}
+
+enum DeviceType {
+  DESKTOP
+  TABLET
+  MOBILE
+  BOT
+}
+
+// Page Visit Tracking
+model PageVisit {
+  id          String   @id @default(cuid())
+  visitorId   String
+  visitor     Visitor  @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  leadId      String?
+  lead        Lead?   @relation(fields: [leadId], references: [id])
+  
+  path        String
+  title       String?
+  referrer    String?
+  timeSpent   Int      @default(0) // seconds
+  
+  visitedAt   DateTime @default(now())
+
+  @@index([visitorId])
+  @@index([leadId])
+  @@index([visitedAt])
+}
+
+// Activity Timeline
+model ActivityLog {
+  id         String   @id @default(cuid())
+  leadId     String
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  
+  action     String
+  detail     String?
+  metadata   Json?
+  
+  timestamp  DateTime @default(now())
+
+  @@index([leadId])
+  @@index([timestamp])
+}
+
+// System Configuration
+model SystemSettings {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
+}
+
+// AI/Chatbot Configuration
+model ChatbotConfig {
+  id                String   @id @default(cuid())
+  isActive          Boolean  @default(true)
+  
+  // System prompt and behavior
+  systemPrompt      String   @db.Text
+  businessSummary   String   @db.Text
+  pricingNotes     String   @db.Text
+  escalationMessage String  @db.Text
+  
+  // Knowledge base settings
+  useKnowledgeBase Boolean  @default(true)
+  matchConfidence Float    @default(0.7)
+  
+  // Response settings
+  responseDelay     Int      @default(500) // ms
+  maxResponseLength Int      @default(500)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// Team/Agent Configuration
+model TeamSettings {
+  id                    String   @id @default(cuid())
+  
+  // Routing
+  autoAssignEnabled     Boolean  @default(false)
+  roundRobinEnabled     Boolean  @default(false)
+  
+  // Notifications
+  notifyOnNewLead      Boolean  @default(true)
+  notifyOnMessage      Boolean  @default(true)
+  notifyOnTakeover     Boolean  @default(true)
+  
+  // Working hours
+  workingHoursStart    String   @default("09:00")
+  workingHoursEnd      String   @default("18:00")
+  workingDays          String[] @default(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
+  
+  // AI behavior
+  aiActiveAfterHours   Boolean  @default(true)
+  aiResponsesEnabled   Boolean  @default(true)
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
