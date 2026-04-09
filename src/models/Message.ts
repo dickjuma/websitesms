@@ -1,11 +1,35 @@
-import { InferSchemaType, Model, Schema, model, models } from "mongoose";
+import mongoose, { Schema, Document, Model } from "mongoose";
 
-const messageSchema = new Schema(
+export interface IMessage extends Document {
+  userId: string;
+  leadId?: string;
+  sessionId: string;
+  sender: "user" | "admin" | "bot" | "agent";
+  senderId?: string;
+  senderName?: string;
+  message: string;
+  status: "sent" | "delivered" | "seen";
+  clientMessageId?: string;
+  timestamp: Date;
+  metadata?: {
+    userAgent?: string;
+    userAgentData?: string;
+    pageUrl?: string;
+    leadId?: string;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const MessageSchema = new Schema<IMessage>(
   {
-    leadId: {
-      type: Schema.Types.ObjectId,
-      ref: "Lead",
+    userId: {
+      type: String,
       required: true,
+      index: true,
+    },
+    leadId: {
+      type: String,
       index: true,
     },
     sessionId: {
@@ -15,12 +39,19 @@ const messageSchema = new Schema(
     },
     sender: {
       type: String,
-      enum: ["user", "bot", "agent"],
+      enum: ["user", "admin", "bot", "agent"],
       required: true,
+    },
+    senderId: {
+      type: String,
+      default: undefined,
+    },
+    senderName: {
+      type: String,
+      default: undefined,
     },
     message: {
       type: String,
-      trim: true,
       required: true,
     },
     timestamp: {
@@ -28,25 +59,35 @@ const messageSchema = new Schema(
       default: Date.now,
       index: true,
     },
+    status: {
+      type: String,
+      enum: ["sent", "delivered", "seen"],
+      default: "sent",
+    },
     clientMessageId: {
       type: String,
-      default: "",
+      default: undefined,
       index: true,
+    },
+    metadata: {
+      userAgent: String,
+      userAgentData: String,
+      pageUrl: String,
+      leadId: String,
     },
   },
   {
-    versionKey: false,
-  },
+    timestamps: true,
+  }
 );
 
-messageSchema.index({ leadId: 1, timestamp: -1 });
-messageSchema.index({ sessionId: 1, timestamp: -1 });
-messageSchema.index({ leadId: 1, clientMessageId: 1 });
+MessageSchema.index({ userId: 1, createdAt: -1 });
+MessageSchema.index({ leadId: 1, createdAt: -1 });
+MessageSchema.index({ sessionId: 1, createdAt: -1 });
+MessageSchema.index({ userId: 1, sessionId: 1, createdAt: -1 });
+MessageSchema.index({ userId: 1, clientMessageId: 1 });
 
-export type MessageDocument = InferSchemaType<typeof messageSchema> & {
-  _id: Schema.Types.ObjectId;
-};
+export const MessageModel: Model<IMessage> =
+  mongoose.models.Message || mongoose.model<IMessage>("Message", MessageSchema);
 
-export const MessageModel =
-  (models.Message as Model<MessageDocument>) ||
-  model<MessageDocument>("Message", messageSchema);
+export default MessageModel;

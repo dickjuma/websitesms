@@ -355,7 +355,7 @@ function serializeMessage(message: any): MessageDto {
     sessionId: message.sessionId,
     sender: message.sender,
     message: message.message,
-    timestamp: toIsoString(message.timestamp),
+    timestamp: toIsoString(message.timestamp || message.createdAt),
     ...(message.clientMessageId ? { clientMessageId: message.clientMessageId } : {}),
   };
 }
@@ -732,12 +732,24 @@ export async function saveMessage(params: {
     }
   }
 
+  const lead = await LeadModel.findById(assertLeadId(params.leadId))
+    .select({ visitorId: 1 })
+    .lean();
+
+  if (!lead) {
+    throw new Error("Lead not found.");
+  }
+
+  const resolvedUserId = lead.visitorId || params.leadId;
+  const messageTimestamp = new Date();
+
   const createdMessage = await MessageModel.create({
+    userId: resolvedUserId,
     leadId: assertLeadId(params.leadId),
     sessionId: params.sessionId,
     sender: params.sender,
     message: params.message.trim(),
-    timestamp: new Date(),
+    timestamp: messageTimestamp,
     clientMessageId: params.clientMessageId || "",
   });
 
@@ -745,8 +757,8 @@ export async function saveMessage(params: {
     { sessionId: params.sessionId } as any,
     {
       $set: {
-        lastActivityAt: createdMessage.timestamp,
-        lastMessageAt: createdMessage.timestamp,
+        lastActivityAt: createdMessage.timestamp || createdMessage.createdAt || messageTimestamp,
+        lastMessageAt: createdMessage.timestamp || createdMessage.createdAt || messageTimestamp,
         lastMessagePreview: params.message.trim().slice(0, 180),
         ...(params.sender === "user"
           ? { title: createSessionTitle(params.message) }

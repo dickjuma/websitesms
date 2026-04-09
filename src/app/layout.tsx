@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { BrowserFixes } from "@/components/system/browser-fixes";
 import { ChatInterfaceMount } from "@/components/chatbot/chat-interface-mount";
 import "./globals.css";
 
@@ -31,9 +32,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full scroll-smooth antialiased">
+    <html
+      lang="en"
+      className="h-full scroll-smooth antialiased"
+      data-scroll-behavior="smooth"
+    >
       <body className="min-h-full flex flex-col" suppressHydrationWarning={true}>
         {children}
+        <BrowserFixes />
         <ChatInterfaceMount />
       </body>
     </html>

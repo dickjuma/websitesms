@@ -454,6 +454,7 @@ export function ChatInterface() {
   useLeadRoomSocket({
     enabled: isOpen,
     roomId,
+    leadId,
     onMessage: (message) => {
       if (session?.id && message.sessionId !== session.id) {
         return;

@@ -20,6 +20,11 @@ import {
   User,
 } from "lucide-react";
 
+import { useAdminSocket } from "@/hooks/use-admin-socket";
+import { useNotifications } from "@/hooks/use-notifications";
+import { getSocketClient } from "@/lib/socket/client";
+import type { OutboundMessagePayload } from "@/lib/socket/events";
+
 interface LeadListItem {
   id: string;
   name: string;

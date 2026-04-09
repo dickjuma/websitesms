@@ -6,12 +6,12 @@ export function TestimonialsSection() {
     <section className="border-t border-slate-200 bg-gradient-to-b from-white to-slate-50 px-6 py-20 lg:px-8">
       <div className="mx-auto max-w-7xl">
         <div className="text-center mb-16">
-          <p className="text-sm font-semibold uppercase tracking-wider text-blue-700">Client Feedback</p>
+          <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">Client Feedback</p>
           <h2 className="mt-4 text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl">
             What Our Clients Say
           </h2>
-          <p className="mt-6 max-w-2xl mx-auto text-lg text-slate-600">
-            Do not just take our word for it. Hear from some of our most valued partners.
+          <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-600">
+            Don&apos;t just take our word for it. Hear from some of our most valued partners.
           </p>
         </div>
 

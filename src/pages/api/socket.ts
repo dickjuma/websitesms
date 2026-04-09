@@ -22,6 +22,13 @@ export default function handler(
     const io = new SocketIOServer(response.socket.server, {
       path: SOCKET_PATH,
       addTrailingSlash: false,
+      transports: ["websocket", "polling"],
+      serveClient: false,
+      connectionStateRecovery: {
+        maxDisconnectionDuration: 2 * 60 * 1000,
+        skipMiddlewares: true,
+      },
+      maxHttpBufferSize: 1e6,
       cors: {
         origin: true,
         methods: ["GET", "POST"],

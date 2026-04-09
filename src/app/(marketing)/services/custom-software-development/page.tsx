@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
-import { customSoftwareContent as content } from "../_content";
-import { CustomSoftwareDevelopmentContent } from "./page-content";
+
+import { ServiceDetail } from "@/components/services/service-detail";
+import { getEnterpriseServiceBySlug } from "@/lib/enterprise-services";
+
+const service = getEnterpriseServiceBySlug("custom-software-development");
 
 export const metadata: Metadata = {
-  title: content.title,
-  description: content.summary,
+  title: service.title,
+  description: service.cardDescription,
 };
 
 export default function CustomSoftwareDevelopmentPage() {
-  return <CustomSoftwareDevelopmentContent />;
+  return <ServiceDetail service={service} />;
 }

@@ -4,62 +4,47 @@ import { useState, useMemo } from "react";
 import { Search, ThumbsUp, ThumbsDown, Copy, Check } from "lucide-react";
 import { faqItems } from "@/lib/site-data";
 
-// Extend faqItems to include a category field if not present, or we can auto‑detect
-// For demonstration, we'll add categories dynamically based on keywords.
-// You can also modify your site-data to include a 'category' field.
+/**
+ * Configuration for automatic category detection based on keywords.
+ * In a production environment, this metadata should ideally come from the CMS/Data layer.
+ */
+const CATEGORY_MAP: Record<string, string[]> = {
+  Pricing: ["pricing", "cost", "budget"],
+  Timeline: ["timeline", "delivery", "deadline"],
+  Support: ["support", "maintenance"],
+  Security: ["security", "compliance"],
+};
 
 export function FAQSection() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
-  const [helpfulVotes, setHelpfulVotes] = useState<Record<number, "yes" | "no" | null>>({});
+  const [helpfulVotes, setHelpfulVotes] = useState<Record<number, "yes" | "no">>({});
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
-  // Extract unique categories from faqItems (you can also hardcode or add to data)
   const categories = useMemo(() => {
-    const cats = new Set<string>();
-    cats.add("All");
-    faqItems.forEach((item) => {
-      // Simple category detection – replace with actual category field if available
-      const text = (item.question + item.answer).toLowerCase();
-      if (text.includes("pricing") || text.includes("cost") || text.includes("budget"))
-        cats.add("Pricing");
-      else if (text.includes("timeline") || text.includes("delivery") || text.includes("deadline"))
-        cats.add("Timeline");
-      else if (text.includes("support") || text.includes("maintenance"))
-        cats.add("Support");
-      else if (text.includes("security") || text.includes("compliance"))
-        cats.add("Security");
-      else cats.add("General");
-    });
-    return Array.from(cats);
-  }, [faqItems]);
+    return ["All", ...Object.keys(CATEGORY_MAP), "General"];
+  }, []);
 
-  // Filter items based on search query and category
   const filteredItems = useMemo(() => {
-    return faqItems.filter((item, idx) => {
+    return faqItems.filter((item) => {
+      const text = (item.question + item.answer).toLowerCase();
       const matchesSearch =
-        searchQuery === "" ||
-        item.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.answer.toLowerCase().includes(searchQuery.toLowerCase());
+        !searchQuery || text.includes(searchQuery.toLowerCase());
 
-      let matchesCategory = activeCategory === "All";
-      if (!matchesCategory) {
-        const text = (item.question + item.answer).toLowerCase();
-        if (activeCategory === "Pricing")
-          matchesCategory = text.includes("pricing") || text.includes("cost") || text.includes("budget");
-        else if (activeCategory === "Timeline")
-          matchesCategory = text.includes("timeline") || text.includes("delivery") || text.includes("deadline");
-        else if (activeCategory === "Support")
-          matchesCategory = text.includes("support") || text.includes("maintenance");
-        else if (activeCategory === "Security")
-          matchesCategory = text.includes("security") || text.includes("compliance");
-        else if (activeCategory === "General")
-          matchesCategory = !text.includes("pricing") && !text.includes("cost") && !text.includes("budget") &&
-                            !text.includes("timeline") && !text.includes("delivery") && !text.includes("deadline") &&
-                            !text.includes("support") && !text.includes("maintenance") &&
-                            !text.includes("security") && !text.includes("compliance");
+      if (activeCategory === "All") return matchesSearch;
+
+      const categoryKeywords = CATEGORY_MAP[activeCategory];
+      if (categoryKeywords) {
+        const matchesCategory = categoryKeywords.some((kw) => text.includes(kw));
+        return matchesSearch && matchesCategory;
       }
-      return matchesSearch && matchesCategory;
+
+      if (activeCategory === "General") {
+        const isSpecific = Object.values(CATEGORY_MAP).flat().some((kw) => text.includes(kw));
+        return matchesSearch && !isSpecific;
+      }
+
+      return matchesSearch;
     });
   }, [searchQuery, activeCategory, faqItems]);
 

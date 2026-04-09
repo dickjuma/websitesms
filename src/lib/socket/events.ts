@@ -5,18 +5,36 @@ export const SOCKET_PATH = "/api/socket/io";
 // Server to Client Events
 export interface ServerToClientEvents {
   // Messages
+  receive_message: (payload: OutboundMessagePayload) => void;
   new_message: (payload: OutboundMessagePayload) => void;
   message_confirmed: (payload: { leadId: string; clientMessageId: string; messageId: string }) => void;
+  message_sent: (payload: { success: boolean; leadId: string; clientMessageId?: string; messageId: string }) => void;
+  chat_history: (payload: { userId: string; messages: OutboundMessagePayload[] }) => void;
+  
+  // User/Lead events
+  user_message: (payload: OutboundMessagePayload & { isNew: boolean }) => void;
+  users_update: (payload: ActiveUser[]) => void;
+  new_lead: (payload: { leadId: string; visitorId: string; name: string; timestamp: string }) => void;
+  new_user: (payload: ActiveUser & { timestamp: string }) => void;
+  user_offline: (payload: { userId: string }) => void;
+  lead_joined: (payload: { leadId: string; sessionId: string; name: string }) => void;
   
   // Typing
   typing: (payload: TypingStatus) => void;
+  user_typing: (payload: TypingStatus) => void;
+  message_status: (payload: { status: string; messageIds: string[] }) => void;
+  rate_limited: (payload: { message: string }) => void;
   
   // Agent activity
+  agent_active: (payload: AgentActivePayload) => void;
   agent_join: (payload: AgentActivity) => void;
   agent_leave: (payload: AgentActivity) => void;
   
-  // Lead events
-  lead_joined: (payload: { leadId: string; name: string }) => void;
+  // Admin events
+  admin_connected: (payload: { admins: ActiveAdmin[]; users: ActiveUser[] }) => void;
+  lead_taken: (payload: { leadId: string; adminId: string; adminName: string }) => void;
+  lead_released: (payload: { leadId: string }) => void;
+  user_read: (payload: { leadId: string }) => void;
   
   // Heartbeat
   pong: () => void;
@@ -27,12 +45,15 @@ export interface ServerToClientEvents {
 
 // Client to Server Events
 export interface ClientToServerEvents {
-  // Room management
-  join_room: (payload: JoinRoomPayload) => void;
-  leave_room: (payload: JoinRoomPayload) => void;
+  // User connection
+  join: (payload: { leadId: string; visitorId?: string; leadName?: string }) => void;
   
   // Admin connection
-  admin_join: (payload: { adminId: string; adminName: string }) => void;
+  join_admin: (payload: { adminId: string; adminName: string; adminToken?: string }) => void;
+  
+  // Room management
+  join_room: (payload: JoinRoomPayload) => void;
+  leave_room: (payload: LeaveRoomPayload) => void;
   
   // Messages
   send_message: (payload: SendMessagePayload) => void;
@@ -44,17 +65,38 @@ export interface ClientToServerEvents {
   takeover: (payload: { leadId: string; adminId?: string; adminName?: string }) => void;
   return_to_ai: (payload: { leadId: string }) => void;
   
+  // Read status
+  mark_read: (payload: { leadId: string }) => void;
+  
   // Heartbeat
   ping: () => void;
 }
 
+// Active user type for real-time tracking
+export interface ActiveUser {
+  socketId: string;
+  visitorId: string;
+  name: string;
+  joinedAt: string;
+  unreadCount: number;
+}
+
+// Active admin type
+export interface ActiveAdmin {
+  socketId: string;
+  name: string;
+  connectedAt: string;
+}
+
 // Payload Types
 export interface JoinRoomPayload {
-  leadId: string;
+  roomId: string;
+  leadId?: string;
 }
 
 export interface LeaveRoomPayload {
-  leadId: string;
+  roomId: string;
+  leadId?: string;
 }
 
 export interface OutboundMessagePayload {
@@ -94,6 +136,14 @@ export interface AgentActivity {
   isActive: boolean;
   roomId?: string;
   sessionId?: string;
+}
+
+export interface AgentActivePayload {
+  leadId: string;
+  adminId?: string;
+  adminName?: string;
+  isActive: boolean;
+  timestamp: string;
 }
 
 export interface AgentJoinPayload extends AgentActivity {

@@ -1,11 +1,13 @@
 import { SiteShell } from "@/components/layout/site-shell";
 import { SectionGrid, SectionIntro } from "@/components/layout/site-shell";
+import { ServiceGrid } from "@/components/services/service-grid";
 import { HeroSection } from "@/components/sections/hero-section";
 import { TrustSection } from "@/components/sections/trust-section";
 import { WhyChooseUsSection } from "@/components/sections/why-choose-us-section";
 import { ProcessSection } from "@/components/sections/process-section";
 import { FinalCtaSection } from "@/components/sections/final-cta-section";
-import { serviceItems, solutionItems, productItems } from "@/lib/site-data";
+import { enterpriseServices } from "@/lib/enterprise-services";
+import { solutionItems, productItems } from "@/lib/site-data";
 
 export default function Home() {
   return (
@@ -16,11 +18,11 @@ export default function Home() {
       <section className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
         <SectionIntro
           eyebrow="Our Services"
-          title="Complete technology delivery without the clutter"
-          description="From websites and customer apps to internal systems and AI workflows, each offer is framed clearly so clients can move to the right next step faster."
+          title="Enterprise services that stay clear at every level"
+          description="The first layer helps buyers scan quickly. The detail layer carries the process, proof, and next steps they need to move forward with confidence."
         />
         <div className="mt-14">
-          <SectionGrid items={serviceItems} />
+          <ServiceGrid services={enterpriseServices} />
         </div>
       </section>
 

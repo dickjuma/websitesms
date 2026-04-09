@@ -147,7 +147,14 @@ export function useRealtimeChat(options: UseRealtimeChatOptions = {}) {
 
         const joinAdminRoom = () => {
           if (adminId) {
-            socket.emit("admin_join", { adminId, adminName: adminName || "Admin" });
+            socket.emit("join_admin", {
+              adminId,
+              adminName: adminName || "Admin",
+              adminToken:
+                typeof window === "undefined"
+                  ? ""
+                  : window.localStorage.getItem("adminToken") || "",
+            });
           }
         };
 
@@ -215,7 +222,7 @@ export function useRealtimeChat(options: UseRealtimeChatOptions = {}) {
       isMounted = false;
       cleanup?.();
     };
-  }, [adminId, adminName, enabled, handleAgentJoin, handleAgentLeave, handleLeadJoined, handleMessageConfirmed, handleNewMessage, handleSocketError, handleTyping, resetReconnect, setConnected, setConnecting, setError]);
+  }, [adminId, adminName, enabled, resetReconnect, setConnected, setConnecting, setError]);
 
   const sendMessage = useCallback(
     (leadId: string, message: string): string => {
@@ -260,7 +267,7 @@ export function useRealtimeChat(options: UseRealtimeChatOptions = {}) {
       return;
     }
 
-    socket.emit("join_room", { leadId });
+    socket.emit("join_room", { roomId: leadId, leadId });
   }, []);
 
   const leaveRoom = useCallback((leadId: string) => {
@@ -269,7 +276,7 @@ export function useRealtimeChat(options: UseRealtimeChatOptions = {}) {
       return;
     }
 
-    socket.emit("leave_room", { leadId });
+    socket.emit("leave_room", { roomId: leadId, leadId });
   }, []);
 
   const takeOverChat = useCallback(

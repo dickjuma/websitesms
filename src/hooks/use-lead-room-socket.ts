@@ -12,6 +12,7 @@ import { getSocketClient } from "@/lib/socket/client";
 interface UseLeadRoomSocketOptions {
   enabled: boolean;
   roomId?: string | null;
+  leadId?: string | null;
   onMessage?: (message: OutboundMessagePayload) => void;
   onTyping?: (payload: TypingPayload) => void;
   onAgentJoin?: (payload: AgentJoinPayload) => void;
@@ -20,6 +21,7 @@ interface UseLeadRoomSocketOptions {
 export function useLeadRoomSocket({
   enabled,
   roomId,
+  leadId,
   onMessage,
   onTyping,
   onAgentJoin,
@@ -52,7 +54,7 @@ export function useLeadRoomSocket({
       }
 
       const joinRoom = () => {
-        socket.emit("join_room", { leadId: roomId });
+        socket.emit("join_room", { roomId, leadId: leadId || undefined });
       };
 
       joinRoom();
@@ -62,7 +64,7 @@ export function useLeadRoomSocket({
       socket.on("agent_join", handleAgentJoin);
 
       unsubscribe = () => {
-        socket.emit("leave_room", { leadId: roomId });
+        socket.emit("leave_room", { roomId, leadId: leadId || undefined });
         socket.off("connect", joinRoom);
         socket.off("new_message", handleMessage);
         socket.off("typing", handleTyping);
@@ -74,5 +76,5 @@ export function useLeadRoomSocket({
       isMounted = false;
       unsubscribe?.();
     };
-  }, [enabled, roomId]);
+  }, [enabled, leadId, roomId]);
 }

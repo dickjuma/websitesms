@@ -2,9 +2,11 @@ import type { Server as HTTPServer } from "http";
 
 import type { NextApiResponse } from "next";
 import type { Socket as NetSocket } from "net";
-import { Server as SocketIOServer } from "socket.io";
+import { Server as SocketIOServer, type Socket } from "socket.io";
 
 import type {
+  ActiveAdmin,
+  ActiveUser,
   AgentJoinPayload,
   ClientToServerEvents,
   OutboundMessagePayload,
@@ -18,10 +20,39 @@ type TypedSocketServer = SocketIOServer<
   ServerToClientEvents
 >;
 
+type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
+
+type LeadPresence = {
+  leadId: string;
+  roomId: string;
+  visitorId: string;
+  name: string;
+  joinedAt: string;
+  unreadCount: number;
+  lastMessage?: string;
+  lastMessageAt?: string;
+  isAgentActive: boolean;
+  sockets: Set<string>;
+};
+
+type AdminPresence = {
+  adminId: string;
+  name: string;
+  connectedAt: string;
+  sockets: Set<string>;
+};
+
+type SocketPresence = {
+  adminId?: string;
+  leadId?: string;
+  roomId?: string;
+};
+
 declare global {
   var socketServerInstance: TypedSocketServer | undefined;
-  var adminRooms: Map<string, Set<string>>;
-  var leadRooms: Map<string, Set<string>>;
+  var socketAdmins: Map<string, AdminPresence> | undefined;
+  var socketLeads: Map<string, LeadPresence> | undefined;
+  var socketPresence: Map<string, SocketPresence> | undefined;
 }
 
 export type NextApiResponseServerIO = NextApiResponse & {
@@ -32,267 +63,644 @@ export type NextApiResponseServerIO = NextApiResponse & {
   };
 };
 
+const ADMIN_ROOM = "admin:global";
+const MAX_MESSAGE_LENGTH = 4000;
+
+function getAdminRegistry() {
+  if (!global.socketAdmins) {
+    global.socketAdmins = new Map();
+  }
+
+  return global.socketAdmins;
+}
+
+function getLeadRegistry() {
+  if (!global.socketLeads) {
+    global.socketLeads = new Map();
+  }
+
+  return global.socketLeads;
+}
+
+function getPresenceRegistry() {
+  if (!global.socketPresence) {
+    global.socketPresence = new Map();
+  }
+
+  return global.socketPresence;
+}
+
+function getPresence(socketId: string) {
+  const registry = getPresenceRegistry();
+
+  if (!registry.has(socketId)) {
+    registry.set(socketId, {});
+  }
+
+  return registry.get(socketId)!;
+}
+
+function serializeActiveUsers(): ActiveUser[] {
+  return Array.from(getLeadRegistry().values()).map((lead) => ({
+    socketId: lead.roomId,
+    visitorId: lead.visitorId,
+    name: lead.name,
+    joinedAt: lead.joinedAt,
+    unreadCount: lead.unreadCount,
+  }));
+}
+
+function serializeActiveAdmins(): ActiveAdmin[] {
+  return Array.from(getAdminRegistry().values()).map((admin) => ({
+    socketId: admin.adminId,
+    name: admin.name,
+    connectedAt: admin.connectedAt,
+  }));
+}
+
+function emitUsersUpdate(io: TypedSocketServer) {
+  io.to(ADMIN_ROOM).emit("users_update", serializeActiveUsers());
+}
+
+function emitAdminConnected(socket: TypedSocket) {
+  socket.emit("admin_connected", {
+    admins: serializeActiveAdmins(),
+    users: serializeActiveUsers(),
+  });
+}
+
+function ensureLeadPresence(params: {
+  leadId: string;
+  roomId: string;
+  visitorId?: string;
+  name?: string;
+}) {
+  const leads = getLeadRegistry();
+  const existing = leads.get(params.leadId);
+
+  if (existing) {
+    existing.roomId = params.roomId || existing.roomId;
+    existing.visitorId = params.visitorId || existing.visitorId;
+    existing.name = params.name || existing.name;
+    return { lead: existing, isNew: false };
+  }
+
+  const lead: LeadPresence = {
+    leadId: params.leadId,
+    roomId: params.roomId,
+    visitorId: params.visitorId || params.leadId,
+    name: params.name || "Visitor",
+    joinedAt: new Date().toISOString(),
+    unreadCount: 0,
+    isAgentActive: false,
+    sockets: new Set(),
+  };
+
+  leads.set(params.leadId, lead);
+  return { lead, isNew: true };
+}
+
+function registerLeadSocket(params: {
+  socketId: string;
+  leadId?: string;
+  roomId: string;
+  visitorId?: string;
+  name?: string;
+}) {
+  if (!params.leadId) {
+    return null;
+  }
+
+  const { lead, isNew } = ensureLeadPresence({
+    leadId: params.leadId,
+    roomId: params.roomId,
+    visitorId: params.visitorId,
+    name: params.name,
+  });
+
+  lead.sockets.add(params.socketId);
+  return { lead, isNew };
+}
+
+function removeSocketPresence(socketId: string) {
+  const presenceRegistry = getPresenceRegistry();
+  const leadRegistry = getLeadRegistry();
+  const adminRegistry = getAdminRegistry();
+  const presence = presenceRegistry.get(socketId);
+
+  if (!presence) {
+    return;
+  }
+
+  if (presence.leadId) {
+    const lead = leadRegistry.get(presence.leadId);
+
+    if (lead) {
+      lead.sockets.delete(socketId);
+
+      if (lead.sockets.size === 0) {
+        leadRegistry.delete(presence.leadId);
+      }
+    }
+  }
+
+  if (presence.adminId) {
+    const admin = adminRegistry.get(presence.adminId);
+
+    if (admin) {
+      admin.sockets.delete(socketId);
+
+      if (admin.sockets.size === 0) {
+        adminRegistry.delete(presence.adminId);
+      }
+    }
+  }
+
+  presenceRegistry.delete(socketId);
+}
+
+function clearLeadPresence(socketId: string, leadId?: string) {
+  const presence = getPresenceRegistry().get(socketId);
+
+  if (!presence?.leadId) {
+    return;
+  }
+
+  if (leadId && presence.leadId !== leadId) {
+    return;
+  }
+
+  const lead = getLeadRegistry().get(presence.leadId);
+
+  if (lead) {
+    lead.sockets.delete(socketId);
+
+    if (lead.sockets.size === 0) {
+      getLeadRegistry().delete(presence.leadId);
+    }
+  }
+
+  delete presence.leadId;
+  delete presence.roomId;
+}
+
+function publishLeadEvent(io: TypedSocketServer, lead: LeadPresence) {
+  io.to(ADMIN_ROOM).emit("new_lead", {
+    leadId: lead.leadId,
+    visitorId: lead.visitorId,
+    name: lead.name,
+    timestamp: lead.joinedAt,
+  });
+
+  io.to(ADMIN_ROOM).emit("lead_joined", {
+    leadId: lead.leadId,
+    sessionId: lead.roomId,
+    name: lead.name,
+  });
+}
+
+function updateLeadFromMessage(payload: OutboundMessagePayload) {
+  const { lead } = ensureLeadPresence({
+    leadId: payload.leadId,
+    roomId: payload.sessionId || payload.leadId,
+  });
+
+  lead.roomId = payload.sessionId || payload.leadId;
+  lead.lastMessage = payload.message;
+  lead.lastMessageAt = payload.timestamp;
+
+  if (payload.sender === "user") {
+    lead.unreadCount += 1;
+  }
+
+  return lead;
+}
+
+function emitMessage(io: TypedSocketServer, payload: OutboundMessagePayload) {
+  const roomId = payload.sessionId || payload.leadId;
+
+  io.to(roomId).emit("new_message", payload);
+  io.to(ADMIN_ROOM).emit("new_message", payload);
+
+  if (payload.sender === "user") {
+    io.to(ADMIN_ROOM).emit("user_message", {
+      ...payload,
+      isNew: true,
+    });
+  }
+}
+
+function emitAgentState(io: TypedSocketServer, payload: AgentJoinPayload) {
+  const roomId = payload.sessionId || payload.leadId;
+  const lead = getLeadRegistry().get(payload.leadId);
+
+  if (lead) {
+    lead.isAgentActive = payload.isActive;
+  }
+
+  if (payload.isActive) {
+    io.to(roomId).emit("agent_join", payload);
+    io.to(ADMIN_ROOM).emit("lead_taken", {
+      leadId: payload.leadId,
+      adminId: payload.adminId,
+      adminName: payload.adminName,
+    });
+  } else {
+    io.to(roomId).emit("agent_leave", payload);
+    io.to(ADMIN_ROOM).emit("lead_released", {
+      leadId: payload.leadId,
+    });
+  }
+
+  io.to(roomId).emit("agent_active", {
+    leadId: payload.leadId,
+    adminId: payload.adminId,
+    adminName: payload.adminName,
+    isActive: payload.isActive,
+    timestamp: new Date().toISOString(),
+  });
+
+  emitUsersUpdate(io);
+}
+
+function hasAdminSocketAuth(socket: TypedSocket, payloadToken?: string) {
+  const authToken =
+    (typeof payloadToken === "string" && payloadToken.trim()) ||
+    (typeof socket.handshake.auth?.adminToken === "string"
+      ? socket.handshake.auth.adminToken.trim()
+      : "");
+
+  return authToken.length > 0;
+}
+
+function normalizeJoinPayload(
+  payload:
+    | { roomId?: string; leadId?: string; visitorId?: string; leadName?: string }
+    | { leadId?: string; visitorId?: string; leadName?: string; sessionId?: string }
+    | undefined,
+) {
+  let roomId = "";
+  if (payload) {
+    if ("roomId" in payload) {
+      roomId = payload.roomId || "";
+    } else if ("sessionId" in payload) {
+      roomId = payload.sessionId || "";
+    }
+  }
+  roomId = roomId || (payload as any)?.leadId || "";
+  const leadId = payload?.leadId || undefined;
+
+  return {
+    roomId,
+    leadId,
+    visitorId: payload?.visitorId || leadId,
+    leadName: payload?.leadName || "Visitor",
+  };
+}
+
 export function setSocketServer(io: TypedSocketServer) {
   global.socketServerInstance = io;
-  global.adminRooms = new Map();
-  global.leadRooms = new Map();
+
+  if (!global.socketAdmins) {
+    global.socketAdmins = new Map();
+  }
+
+  if (!global.socketLeads) {
+    global.socketLeads = new Map();
+  }
+
+  if (!global.socketPresence) {
+    global.socketPresence = new Map();
+  }
 }
 
 export function getSocketServer() {
   return global.socketServerInstance || null;
 }
 
-function getAdminRooms() {
-  if (!global.adminRooms) {
-    global.adminRooms = new Map();
-  }
-  return global.adminRooms;
-}
-
-function getLeadRooms() {
-  if (!global.leadRooms) {
-    global.leadRooms = new Map();
-  }
-  return global.leadRooms;
-}
-
 export function registerSocketHandlers(io: TypedSocketServer) {
   io.on("connection", (socket) => {
     console.log(`Client connected: ${socket.id}`);
-    let currentLeadId: string | null = null;
-    let currentAdminId: string | null = null;
 
-    // Join a chat room (for both user and admin)
-    socket.on("join_room", ({ leadId }) => {
-      if (!leadId) return;
-      
-      currentLeadId = leadId;
-      socket.join(leadId);
-      
-      // Track lead rooms
-      const leadRooms = getLeadRooms();
-      if (!leadRooms.has(leadId)) {
-        leadRooms.set(leadId, new Set());
+    socket.on("join", (payload) => {
+      const normalized = normalizeJoinPayload(payload);
+
+      if (!normalized.roomId) {
+        socket.emit("error", { message: "roomId is required" });
+        return;
       }
-      leadRooms.get(leadId)?.add(socket.id);
-      
-      console.log(`Socket ${socket.id} joined room: ${leadId}`);
-    });
 
-    // Leave a chat room
-    socket.on("leave_room", ({ leadId }) => {
-      if (!leadId) return;
-      
-      socket.leave(leadId);
-      
-      // Clean up lead rooms
-      const leadRooms = getLeadRooms();
-      leadRooms.get(leadId)?.delete(socket.id);
-      
-      currentLeadId = null;
-    });
-
-    // Admin joins the system
-    socket.on("admin_join", ({ adminId, adminName }) => {
-      if (!adminId) return;
-      
-      currentAdminId = adminId;
-      const adminRooms = getAdminRooms();
-      
-      if (!adminRooms.has(adminId)) {
-        adminRooms.set(adminId, new Set());
+      const existingPresence = getPresence(socket.id);
+      if (existingPresence.roomId && existingPresence.roomId !== normalized.roomId) {
+        socket.leave(existingPresence.roomId);
       }
-      adminRooms.get(adminId)?.add(socket.id);
-      
-      // Join admin to all active lead rooms for notifications
-      const leadRooms = getLeadRooms();
-      leadRooms.forEach((sockets, leadId) => {
-        if (sockets.size > 0) {
-          socket.join(`lead:${leadId}`);
-        }
+
+      clearLeadPresence(socket.id);
+      socket.join(normalized.roomId);
+      const presence = getPresence(socket.id);
+      presence.roomId = normalized.roomId;
+      presence.leadId = normalized.leadId;
+
+      const leadRegistration = registerLeadSocket({
+        socketId: socket.id,
+        roomId: normalized.roomId,
+        leadId: normalized.leadId,
+        visitorId: normalized.visitorId,
+        name: normalized.leadName,
       });
-      
-      console.log(`Admin ${adminName} (${adminId}) joined`);
+
+      if (leadRegistration?.isNew) {
+        publishLeadEvent(io, leadRegistration.lead);
+      }
+
+      emitUsersUpdate(io);
     });
 
-    // Send a message
-    socket.on(
-      "send_message",
-      ({ leadId, sessionId, sender, message, clientMessageId }) => {
-        if (!leadId || !sessionId || !message?.trim()) {
-          return;
-        }
+    socket.on("join_room", (payload) => {
+      const normalized = normalizeJoinPayload(payload);
 
-        const messageId =
-          clientMessageId || `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-        const resolvedClientMessageId = clientMessageId ?? messageId;
-        
-        const payload: OutboundMessagePayload = {
-          id: messageId,
-          leadId,
-          sessionId,
-          sender,
-          message: message.trim(),
-          timestamp: new Date().toISOString(),
-          clientMessageId: resolvedClientMessageId,
-        };
+      if (!normalized.roomId) {
+        socket.emit("error", { message: "roomId is required" });
+        return;
+      }
 
-        // Send to the specific lead room
-        io.to(leadId).emit("new_message", payload);
-        
-        // Also emit to admin notification room
-        io.to(`lead:${leadId}`).emit("new_message", payload);
+      const existingPresence = getPresence(socket.id);
+      if (existingPresence.roomId && existingPresence.roomId !== normalized.roomId) {
+        socket.leave(existingPresence.roomId);
+      }
 
-        // Confirm message to sender
-        socket.emit("message_confirmed", {
-          leadId,
-          clientMessageId: resolvedClientMessageId,
-          messageId,
+      clearLeadPresence(socket.id);
+      socket.join(normalized.roomId);
+      const presence = getPresence(socket.id);
+      presence.roomId = normalized.roomId;
+
+      if (normalized.leadId) {
+        presence.leadId = normalized.leadId;
+      }
+
+      const leadRegistration = registerLeadSocket({
+        socketId: socket.id,
+        roomId: normalized.roomId,
+        leadId: normalized.leadId,
+        visitorId: normalized.visitorId,
+        name: normalized.leadName,
+      });
+
+      if (leadRegistration?.isNew) {
+        publishLeadEvent(io, leadRegistration.lead);
+      }
+
+      emitUsersUpdate(io);
+    });
+
+    socket.on("leave_room", (payload) => {
+      const normalized = normalizeJoinPayload(payload);
+
+      if (!normalized.roomId) {
+        return;
+      }
+
+      socket.leave(normalized.roomId);
+      clearLeadPresence(socket.id, normalized.leadId);
+      emitUsersUpdate(io);
+    });
+
+    socket.on("join_admin", ({ adminId, adminName, adminToken }) => {
+      if (!adminId) {
+        socket.emit("error", { message: "adminId is required" });
+        return;
+      }
+
+      if (!hasAdminSocketAuth(socket, adminToken)) {
+        socket.emit("error", { message: "Unauthorized admin socket connection." });
+        socket.disconnect(true);
+        return;
+      }
+
+      socket.join(ADMIN_ROOM);
+
+      const admins = getAdminRegistry();
+      const existing = admins.get(adminId);
+
+      if (existing) {
+        existing.sockets.add(socket.id);
+        existing.name = adminName || existing.name;
+      } else {
+        admins.set(adminId, {
+          adminId,
+          name: adminName || "Admin",
+          connectedAt: new Date().toISOString(),
+          sockets: new Set([socket.id]),
         });
-
-        console.log(`Message sent to lead ${leadId}: ${message.slice(0, 50)}...`);
       }
-    );
 
-    // Typing indicator
-    socket.on("typing", ({ leadId, sender, isTyping }) => {
-      if (!leadId) return;
+      const presence = getPresence(socket.id);
+      presence.adminId = adminId;
 
-      // Broadcast to lead room
-      socket.to(leadId).emit("typing", {
-        leadId,
-        sender,
-        isTyping,
-      });
-
-      // Also notify admin room
-      socket.to(`lead:${leadId}`).emit("typing", {
-        leadId,
-        sender,
-        isTyping,
-      });
+      emitAdminConnected(socket);
+      emitUsersUpdate(io);
     });
 
-    // Agent takes over a chat
-    socket.on("takeover", ({ leadId, adminId, adminName }) => {
-      if (!leadId || !adminId) return;
+    socket.on("send_message", (payload) => {
+      const leadId = payload.leadId?.trim();
+      const roomId = payload.sessionId?.trim() || leadId;
+      const message = payload.message?.trim();
 
+      if (!leadId || !roomId || !message) {
+        socket.emit("error", { message: "leadId, sessionId, and message are required." });
+        return;
+      }
+
+      if (message.length > MAX_MESSAGE_LENGTH) {
+        socket.emit("error", { message: `Messages must be ${MAX_MESSAGE_LENGTH} characters or less.` });
+        return;
+      }
+
+      const messageId =
+        payload.clientMessageId || `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+      const resolvedClientMessageId = payload.clientMessageId ?? messageId;
+
+      const outbound: OutboundMessagePayload = {
+        id: messageId,
+        leadId,
+        sessionId: roomId,
+        sender: payload.sender,
+        message,
+        timestamp: new Date().toISOString(),
+        clientMessageId: resolvedClientMessageId,
+      };
+
+      const lead = updateLeadFromMessage(outbound);
+      emitMessage(io, outbound);
+      emitUsersUpdate(io);
+
+      socket.emit("message_confirmed", {
+        leadId,
+        clientMessageId: resolvedClientMessageId,
+        messageId,
+      });
+
+      if (lead.sockets.size === 0) {
+        lead.sockets.add(socket.id);
+      }
+    });
+
+    socket.on("typing", ({ leadId, isTyping, sender }) => {
+      if (!leadId) {
+        return;
+      }
+
+      const lead = getLeadRegistry().get(leadId);
+      const roomId = lead?.roomId || leadId;
+      const payload: TypingPayload = { leadId, sender, isTyping };
+
+      socket.to(roomId).emit("typing", payload);
+      socket.to(ADMIN_ROOM).emit("typing", payload);
+
+      if (sender === "user") {
+        socket.to(ADMIN_ROOM).emit("user_typing", payload);
+      }
+    });
+
+    socket.on("mark_read", ({ leadId }) => {
+      if (!leadId) {
+        return;
+      }
+
+      const lead = getLeadRegistry().get(leadId);
+
+      if (lead) {
+        lead.unreadCount = 0;
+      }
+
+      io.to(ADMIN_ROOM).emit("user_read", { leadId });
+      emitUsersUpdate(io);
+    });
+
+    socket.on("takeover", ({ leadId, adminId, adminName }) => {
+      if (!leadId || !adminId) {
+        socket.emit("error", { message: "leadId and adminId are required." });
+        return;
+      }
+
+      const lead = getLeadRegistry().get(leadId);
       const payload: AgentJoinPayload = {
         leadId,
         adminId,
         adminName: adminName || "Admin",
         isActive: true,
-        roomId: leadId,
-        sessionId: leadId,
+        roomId: lead?.roomId || leadId,
+        sessionId: lead?.roomId || leadId,
       };
 
-      // Notify the lead room
-      io.to(leadId).emit("agent_join", payload);
-      
-      // Update admin room
-      io.to(`lead:${leadId}`).emit("agent_join", payload);
-
-      console.log(`Admin ${adminName} took over lead ${leadId}`);
+      emitAgentState(io, payload);
     });
 
-    // Return control to AI
     socket.on("return_to_ai", ({ leadId }) => {
-      if (!leadId) return;
+      if (!leadId) {
+        return;
+      }
 
+      const presence = getPresence(socket.id);
+      const lead = getLeadRegistry().get(leadId);
       const payload: AgentJoinPayload = {
         leadId,
-        adminId: currentAdminId || "",
+        adminId: presence.adminId || "",
         adminName: "",
         isActive: false,
-        roomId: leadId,
-        sessionId: leadId,
+        roomId: lead?.roomId || leadId,
+        sessionId: lead?.roomId || leadId,
       };
 
-      // Notify the lead room
-      io.to(leadId).emit("agent_leave", payload);
-      
-      // Update admin room
-      io.to(`lead:${leadId}`).emit("agent_leave", payload);
-
-      console.log(`Control returned to AI for lead ${leadId}`);
+      emitAgentState(io, payload);
     });
 
-    // Ping/pong for heartbeat
     socket.on("ping", () => {
       socket.emit("pong");
     });
 
-    // Handle disconnect
     socket.on("disconnect", (reason) => {
       console.log(`Client disconnected: ${socket.id}, reason: ${reason}`);
-      
-      // Clean up admin rooms
-      if (currentAdminId) {
-        const adminRooms = getAdminRooms();
-        adminRooms.get(currentAdminId)?.delete(socket.id);
-        
-        if (adminRooms.get(currentAdminId)?.size === 0) {
-          adminRooms.delete(currentAdminId);
-        }
-      }
-
-      // Clean up lead rooms
-      if (currentLeadId) {
-        const leadRooms = getLeadRooms();
-        leadRooms.get(currentLeadId)?.delete(socket.id);
-      }
+      removeSocketPresence(socket.id);
+      emitUsersUpdate(io);
     });
   });
 }
 
-// Emit functions for server-side use
 export function emitChatMessage(payload: OutboundMessagePayload) {
-  const roomId = payload.sessionId || payload.leadId;
-  if (!roomId) return;
-  
   const io = getSocketServer();
-  if (!io) return;
 
-  io.to(roomId).emit("new_message", payload);
-  io.to(`lead:${roomId}`).emit("new_message", payload);
+  if (!io) {
+    return;
+  }
+
+  const lead = updateLeadFromMessage(payload);
+
+  if (payload.sender === "user" && lead.sockets.size === 0) {
+    publishLeadEvent(io, lead);
+  }
+
+  emitMessage(io, payload);
+  emitUsersUpdate(io);
 }
 
 export function emitTyping(payload: TypingPayload) {
-  const leadId = payload.leadId;
-  if (!leadId) return;
-  
   const io = getSocketServer();
-  if (!io) return;
 
-  io.to(leadId).emit("typing", payload);
-  io.to(`lead:${leadId}`).emit("typing", payload);
+  if (!io || !payload.leadId) {
+    return;
+  }
+
+  const lead = getLeadRegistry().get(payload.leadId);
+  const roomId = lead?.roomId || payload.leadId;
+
+  io.to(roomId).emit("typing", payload);
+  io.to(ADMIN_ROOM).emit("typing", payload);
+
+  if (payload.sender === "user") {
+    io.to(ADMIN_ROOM).emit("user_typing", payload);
+  }
 }
 
 export function emitAgentJoin(payload: AgentJoinPayload) {
-  const leadId = payload.leadId;
-  if (!leadId) return;
-  
   const io = getSocketServer();
-  if (!io) return;
 
-  io.to(leadId).emit("agent_join", payload);
-  io.to(`lead:${leadId}`).emit("agent_join", payload);
+  if (!io || !payload.leadId) {
+    return;
+  }
+
+  emitAgentState(io, payload);
 }
 
 export function emitNewLead(leadId: string, leadName: string) {
   const io = getSocketServer();
-  if (!io) return;
 
-  // Notify all admins about new lead
-  io.emit("lead_joined", { leadId, name: leadName });
+  if (!io) {
+    return;
+  }
+
+  const { lead } = ensureLeadPresence({
+    leadId,
+    roomId: leadId,
+    name: leadName,
+  });
+
+  publishLeadEvent(io, lead);
+  emitUsersUpdate(io);
 }
 
 export function emitMessageConfirmed(leadId: string, clientMessageId: string, messageId: string) {
   const io = getSocketServer();
-  if (!io) return;
 
-  // Confirm to the specific socket that sent the message
-  io.emit("message_confirmed", { leadId, clientMessageId, messageId });
+  if (!io) {
+    return;
+  }
+
+  io.to(ADMIN_ROOM).emit("message_confirmed", {
+    leadId,
+    clientMessageId,
+    messageId,
+  });
 }
 
 export { SOCKET_PATH };
