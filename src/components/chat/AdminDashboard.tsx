@@ -1,52 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { io, type Socket } from "socket.io-client";
-
-const SOCKET_PATH = "/api/socket/io";
+import { useCallback, useEffect, useState, useRef } from "react";
+import { Send, User, MessageCircle, X, Users } from "lucide-react";
 
 interface Message {
   id: string;
-  userId: string;
-  sessionId: string;
-  sender: "user" | "admin" | "bot";
-  senderName?: string;
+  sender: "user" | "ai" | "admin";
   message: string;
-  status: "sent" | "delivered" | "seen";
-  clientMessageId?: string;
   timestamp: string;
+  clientMessageId?: string;
 }
 
-interface User {
-  userId: string;
-  name: string;
-  sessionId: string;
-  joinedAt: string;
-  isOnline: boolean;
-  unreadCount: number;
-  lastMessage?: string;
+interface ChatSession {
+  id: string;
+  leadId: string;
+  status: string;
   lastMessageAt?: string;
-}
-
-interface Admin {
-  socketId: string;
-  name: string;
-  connectedAt: string;
-}
-
-const SOCKET_OPTIONS = {
-  path: SOCKET_PATH,
-  addTrailingSlash: false,
-  transports: ["websocket", "polling"],
-  reconnection: true,
-  reconnectionAttempts: 10,
-  reconnectionDelay: 1000,
-};
-
-function getSocketUrl() {
-  if (typeof window === "undefined") return undefined;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-  return appUrl && appUrl !== "http://localhost:3000" ? appUrl : undefined;
+  lastMessagePreview?: string;
+  unreadCount?: number;
 }
 
 function generateClientMessageId(): string {
@@ -60,7 +31,8 @@ function formatTime(dateString: string): string {
   });
 }
 
-function formatRelativeTime(dateString: string): string {
+function formatRelativeTime(dateString?: string): string {
+  if (!dateString) return "";
   const date = new Date(dateString);
   const now = new Date();
   const diff = now.getTime() - date.getTime();
@@ -73,26 +45,88 @@ function formatRelativeTime(dateString: string): string {
   return `${days}d`;
 }
 
+const POLL_INTERVAL = 2000;
+
 export function AdminDashboard() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isConnected, setIsConnected] = useState(false);
-  const [isAgentActive, setIsAgentActive] = useState(false);
-  const [isUserTyping, setIsUserTyping] = useState(false);
-  const [admins, setAdmins] = useState<Admin[]>([]);
-  const [filter, setFilter] = useState("");
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [selectedSession, setSelectedSession] = useState<any>(null);
 
-  const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const initializedRef = useRef(false);
-  const adminIdRef = useRef(`admin-${Date.now()}`);
+  const sessionsPollRef = useRef<NodeJS.Timeout | null>(null);
+  const messagesPollRef = useRef<NodeJS.Timeout | null>(null);
 
-  const selectedUser = users.find((u) => u.userId === selectedUserId);
+  const fetchSessions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/leads", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      
+      const leads = data.leads || data || [];
+      const chatSessions: ChatSession[] = leads.slice(0, 20).map((lead: any) => ({
+        id: lead.currentSessionId || lead._id,
+        leadId: lead._id,
+        status: lead.status,
+        lastMessageAt: lead.lastActivityAt,
+        lastMessagePreview: lead.aiSummary || "No messages",
+        unreadCount: 0,
+      }));
+      setSessions(chatSessions);
+      setIsConnected(true);
+    } catch (err) {
+      console.error("Fetch sessions error:", err);
+      setIsConnected(false);
+    }
+  }, []);
+
+  const fetchMessages = useCallback(async () => {
+    if (!selectedSessionId) return;
+    try {
+      const res = await fetch(`/api/chat/session?sessionId=${selectedSessionId}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      
+      if (data.messages) {
+        setMessages(data.messages.map((m: any) => ({
+          id: m.id || m._id,
+          sender: m.sender,
+          message: m.message || m.text,
+          timestamp: m.timestamp,
+          clientMessageId: m.clientMessageId,
+        })));
+      }
+      if (data.session) {
+        setSelectedSession(data.session);
+      }
+    } catch (err) {
+      console.error("Fetch messages error:", err);
+    }
+  }, [selectedSessionId]);
+
+  useEffect(() => {
+    fetchSessions();
+    sessionsPollRef.current = setInterval(fetchSessions, POLL_INTERVAL);
+    return () => {
+      if (sessionsPollRef.current) clearInterval(sessionsPollRef.current);
+    };
+  }, [fetchSessions]);
+
+  useEffect(() => {
+    if (!selectedSessionId) {
+      setMessages([]);
+      return;
+    }
+    fetchMessages();
+    messagesPollRef.current = setInterval(fetchMessages, POLL_INTERVAL);
+    return () => {
+      if (messagesPollRef.current) clearInterval(messagesPollRef.current);
+    };
+  }, [selectedSessionId, fetchMessages]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -102,375 +136,135 @@ export function AdminDashboard() {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
+  const handleSendMessage = useCallback(async () => {
+    if (!inputValue.trim() || !selectedSessionId) return;
 
-    const socket = io(getSocketUrl(), SOCKET_OPTIONS);
-    socketRef.current = socket;
+    const adminMessageId = generateClientMessageId();
 
-    socket.on("connect", () => {
-      setIsConnected(true);
-      socket.emit("join_admin", {
-        adminId: adminIdRef.current,
-        adminName: "Admin",
-      });
-    });
-
-    socket.on("disconnect", () => {
-      setIsConnected(false);
-    });
-
-    socket.on("admin_connected", (data: { admins: Admin[]; users: User[] }) => {
-      setAdmins(data.admins);
-      setUsers(data.users);
-    });
-
-    socket.on("users_update", (updatedUsers: User[]) => {
-      setUsers((prev) => {
-        const userMap = new Map(updatedUsers.map((u) => [u.userId, u]));
-        return prev.map((user) => {
-          const updated = userMap.get(user.userId);
-          return updated ? { ...user, ...updated } : user;
-        });
-      });
-    });
-
-    socket.on("new_user", (user: User) => {
-      setUsers((prev) => {
-        if (prev.some((u) => u.userId === user.userId)) return prev;
-        return [{ ...user, unreadCount: 0 }, ...prev];
-      });
-
-      if (soundEnabled && audioRef.current) {
-        audioRef.current.play().catch(() => {});
-      }
-
-      if (Notification.permission === "granted") {
-        new Notification("New user", {
-          body: `${user.name} started a chat`,
-          icon: "/favicon.ico",
-        });
-      }
-    });
-
-    socket.on("user_message", (message: Message & { isNew: boolean }) => {
-      if (message.userId === selectedUserId) {
-        setMessages((prev) => {
-          const exists = prev.some(
-            (m) => m.id === message.id || m.clientMessageId === message.clientMessageId
-          );
-          if (exists) return prev;
-          return [...prev, message];
-        });
-
-        socket.emit("mark_seen", {
-          userId: message.userId,
-          messageIds: [message.id],
-        });
-      }
-
-      if (message.isNew) {
-        setUsers((prev) =>
-          prev.map((u) =>
-            u.userId === message.userId
-              ? {
-                  ...u,
-                  unreadCount: u.unreadCount + 1,
-                  lastMessage: message.message,
-                  lastMessageAt: message.timestamp,
-                }
-              : u
-          )
-        );
-
-        if (soundEnabled && message.userId !== selectedUserId && audioRef.current) {
-          audioRef.current.play().catch(() => {});
-        }
-      }
-    });
-
-    socket.on("user_typing", ({ userId, isTyping }: { userId: string; isTyping: boolean }) => {
-      if (userId === selectedUserId) {
-        setIsUserTyping(isTyping);
-      }
-    });
-
-    socket.on("lead_taken", ({ userId }: { userId: string }) => {
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.userId === userId ? { ...u, isOnline: true } : u
-        )
-      );
-    });
-
-    socket.on("lead_released", ({ userId }: { userId: string }) => {
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.userId === userId ? { ...u, isOnline: true } : u
-        )
-      );
-    });
-
-    socket.on("user_offline", ({ userId }: { userId: string }) => {
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.userId === userId ? { ...u, isOnline: false } : u
-        )
-      );
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, [selectedUserId, soundEnabled]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const audio = new Audio("/notification.mp3");
-      audio.preload = "auto";
-      audioRef.current = audio;
-    }
-  }, []);
-
-  const handleSendMessage = useCallback(() => {
-    if (!inputValue.trim() || !socketRef.current || !selectedUserId || !isAgentActive) return;
-
-    const clientMessageId = generateClientMessageId();
-    const messageText = inputValue.trim();
-
-    const optimisticMessage: Message = {
-      id: `pending-${clientMessageId}`,
-      userId: selectedUserId,
-      sessionId: selectedUserId,
+    setMessages(prev => [...prev, {
+      id: `pending-${adminMessageId}`,
       sender: "admin",
-      senderName: "Admin",
-      message: messageText,
-      status: "sent",
-      clientMessageId,
+      message: inputValue.trim(),
       timestamp: new Date().toISOString(),
-    };
+      clientMessageId: adminMessageId,
+    }]);
 
-    setMessages((prev) => [...prev, optimisticMessage]);
     setInputValue("");
 
-    socketRef.current.emit("send_message", {
-      userId: selectedUserId,
-      sessionId: selectedUserId,
-      sender: "admin",
-      senderName: "Admin",
-      message: messageText,
-      clientMessageId,
-    });
-  }, [inputValue, selectedUserId, isAgentActive]);
-
-  const handleUserSelect = useCallback(
-    (userId: string) => {
-      setSelectedUserId(userId);
-      setMessages([]);
-      setIsUserTyping(false);
-
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.userId === userId ? { ...u, unreadCount: 0 } : u
-        )
-      );
-
-      socketRef.current?.emit("mark_seen", {
-        userId,
-        messageIds: [],
+    try {
+      await fetch("/api/chat/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: selectedSessionId,
+          message: inputValue.trim(),
+          sender: "agent",
+          clientMessageId: adminMessageId,
+        }),
       });
-    },
-    []
-  );
 
-  const handleTakeover = useCallback(() => {
-    if (!selectedUserId) return;
-
-    socketRef.current?.emit("takeover", {
-      userId: selectedUserId,
-      adminId: adminIdRef.current,
-      adminName: "Admin",
-    });
-
-    setIsAgentActive(true);
-  }, [selectedUserId]);
-
-  const handleReturnToAI = useCallback(() => {
-    if (!selectedUserId) return;
-
-    socketRef.current?.emit("return_to_ai", {
-      userId: selectedUserId,
-    });
-
-    setIsAgentActive(false);
-  }, [selectedUserId]);
-
-  const handleTyping = useCallback(() => {
-    if (!socketRef.current || !selectedUserId || !isAgentActive) return;
-
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
+      await fetchMessages();
+    } catch (err) {
+      console.error("Send error:", err);
     }
+  }, [inputValue, selectedSessionId, fetchMessages]);
 
-    socketRef.current.emit("typing", {
-      userId: selectedUserId,
-      sender: "admin",
-      isTyping: true,
-    });
-
-    typingTimeoutRef.current = setTimeout(() => {
-      socketRef.current?.emit("typing", {
-        userId: selectedUserId,
-        sender: "admin",
-        isTyping: false,
+  const handleTakeover = useCallback(async () => {
+    if (!selectedSessionId) return;
+    try {
+      await fetch(`/api/admin/takeover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId: selectedSession?.leadId || selectedSessionId }),
       });
-    }, 2000);
-  }, [selectedUserId, isAgentActive]);
+      setSelectedSession((prev: any) => prev ? { ...prev, assignedToHuman: true } : null);
+    } catch (err) {
+      console.error("Takeover error:", err);
+    }
+  }, [selectedSessionId, selectedSession]);
 
-  const filteredUsers = filter
-    ? users.filter(
-        (u) =>
-          u.name.toLowerCase().includes(filter.toLowerCase()) ||
-          u.userId.toLowerCase().includes(filter.toLowerCase())
-      )
-    : users;
+  const handleReleaseToAI = useCallback(async () => {
+    if (!selectedSessionId) return;
+    try {
+      await fetch(`/api/admin/return-to-ai`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId: selectedSession?.leadId || selectedSessionId }),
+      });
+      setSelectedSession((prev: any) => prev ? { ...prev, assignedToHuman: false } : null);
+    } catch (err) {
+      console.error("Release error:", err);
+    }
+  }, [selectedSessionId, selectedSession]);
 
   return (
-    <div className="flex h-screen bg-slate-50">
-      <audio ref={audioRef} src="/notification.mp3" preload="auto" />
-
-      <div className="w-80 flex-shrink-0 border-r border-slate-200 bg-white">
-        <div className="border-b border-slate-200 p-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">Conversations</h2>
-            <div className="flex items-center gap-2">
-              <span
-                className={`h-2.5 w-2.5 rounded-full ${
-                  isConnected ? "bg-green-500" : "bg-red-500"
-                }`}
-              />
-              <button
-                onClick={() => setSoundEnabled(!soundEnabled)}
-                className="rounded p-1 text-slate-400 hover:bg-slate-100"
-                title={soundEnabled ? "Mute" : "Unmute"}
-              >
-                {soundEnabled ? (
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                  </svg>
-                ) : (
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                  </svg>
-                )}
-              </button>
-            </div>
-          </div>
-          <div className="mt-3 relative">
-            <input
-              type="text"
-              placeholder="Search users..."
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-blue-400"
-            />
-            <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
+    <div className="flex h-screen bg-gray-50">
+      <div className="w-80 bg-white border-r flex flex-col">
+        <div className="p-4 border-b">
+          <h2 className="font-semibold flex items-center gap-2">
+            <Users size={20} />
+            Active Chats
+          </h2>
+          <p className={`text-sm ${isConnected ? "text-green-600" : "text-red-600"}`}>
+            {isConnected ? "● Connected" : "● Reconnecting..."}
+          </p>
         </div>
 
-        <div className="overflow-y-auto">
-          {filteredUsers.length === 0 ? (
-            <div className="p-4 text-center text-sm text-slate-500">
-              No conversations yet
+        <div className="flex-1 overflow-y-auto">
+          {sessions.length === 0 && (
+            <div className="p-4 text-center text-gray-500">
+              No active chats
             </div>
-          ) : (
-            <ul className="divide-y divide-slate-50">
-              {filteredUsers.map((user) => (
-                <li key={user.userId}>
-                  <button
-                    onClick={() => handleUserSelect(user.userId)}
-                    className={`w-full p-4 text-left transition ${
-                      selectedUserId === user.userId
-                        ? "bg-blue-50"
-                        : "hover:bg-slate-50"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="relative">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100">
-                          <svg className="h-5 w-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
-                        </div>
-                        <span className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white ${user.isOnline ? "bg-green-500" : "bg-slate-400"}`} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between">
-                          <p className="truncate font-medium text-slate-900">
-                            {user.name}
-                          </p>
-                          {user.lastMessageAt && (
-                            <span className="text-xs text-slate-400">
-                              {formatRelativeTime(user.lastMessageAt)}
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-1 truncate text-sm text-slate-500">
-                          {user.lastMessage || "No messages"}
-                        </p>
-                        <div className="mt-2 flex items-center gap-2">
-                          {user.unreadCount > 0 && (
-                            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-500 px-1.5 text-xs font-bold text-white">
-                              {user.unreadCount}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
           )}
+
+          {sessions.map((session) => (
+            <button
+              key={session.id}
+              onClick={() => setSelectedSessionId(session.id)}
+              className={`w-full p-4 text-left border-b hover:bg-gray-50 ${
+                selectedSessionId === session.id ? "bg-blue-50" : ""
+              }`}
+            >
+              <div className="flex justify-between items-start">
+                <span className="font-medium truncate">
+                  {session.leadId?.slice(0, 8) || session.id.slice(0, 8)}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {formatRelativeTime(session.lastMessageAt)}
+                </span>
+              </div>
+              <p className="text-sm text-gray-600 truncate">
+                {session.lastMessagePreview || "No messages"}
+              </p>
+            </button>
+          ))}
         </div>
       </div>
 
       <div className="flex-1 flex flex-col">
-        {selectedUser ? (
+        {selectedSessionId ? (
           <>
-            <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100">
-                    <svg className="h-5 w-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                  </div>
-                  <span className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white ${selectedUser.isOnline ? "bg-green-500" : "bg-slate-400"}`} />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-slate-900">{selectedUser.name}</h3>
-                  <p className="text-sm text-slate-500">
-                    {selectedUser.isOnline ? "Online" : "Offline"}
-                  </p>
-                </div>
+            <div className="bg-white p-4 border-b flex justify-between items-center">
+              <div>
+                <h3 className="font-semibold">
+                  {selectedSession?.leadId || selectedSessionId.slice(0, 8)}
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {selectedSession?.assignedToHuman ? "Human handling" : "AI responding"}
+                </p>
               </div>
-              <div className="flex items-center gap-2">
-                {isAgentActive ? (
+              <div className="flex gap-2">
+                {selectedSession?.assignedToHuman ? (
                   <button
-                    onClick={handleReturnToAI}
-                    className="rounded-lg bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
+                    onClick={handleReleaseToAI}
+                    className="px-3 py-1 bg-blue-600 text-white text-sm rounded"
                   >
-                    Return to AI
+                    Release to AI
                   </button>
                 ) : (
                   <button
                     onClick={handleTakeover}
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                    className="px-3 py-1 bg-green-600 text-white text-sm rounded"
                   >
                     Take Over
                   </button>
@@ -478,93 +272,54 @@ export function AdminDashboard() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`mb-3 flex ${
-                    message.sender === "admin" ? "justify-end" : "justify-start"
-                  }`}
-                >
-                  <div
-                    className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
-                      message.sender === "admin"
-                        ? "bg-blue-600 text-white"
-                        : message.sender === "user"
-                        ? "bg-slate-100 text-slate-900"
-                        : "bg-emerald-50 text-emerald-900"
-                    }`}
-                  >
-                    <p className="text-sm whitespace-pre-wrap">{message.message}</p>
-                    <div className={`mt-1 flex items-center justify-end gap-1 text-xs ${message.sender === "admin" ? "text-blue-200" : "text-slate-400"}`}>
-                      <span>{formatTime(message.timestamp)}</span>
-                      {message.sender === "user" && message.status === "seen" && (
-                        <span>✓✓</span>
-                      )}
-                    </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {messages.length === 0 && (
+                <div className="text-center text-gray-500 py-8">
+                  No messages yet
+                </div>
+              )}
+
+              {messages.map((msg, idx) => (
+                <div key={msg.clientMessageId || msg.id || idx} className={`flex ${msg.sender === "admin" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[70%] rounded-lg px-3 py-2 ${
+                    msg.sender === "admin" ? "bg-green-600 text-white" : 
+                    msg.sender === "ai" ? "bg-blue-100 text-gray-900" : "bg-gray-100 text-gray-900"
+                  }`}>
+                    <p className="text-sm">
+                      {msg.sender === "admin" ? "You" : msg.message}
+                    </p>
+                    <p className={`text-xs mt-1 ${msg.sender === "admin" ? "text-green-200" : "text-gray-500"}`}>
+                      {formatTime(msg.timestamp)}
+                    </p>
                   </div>
                 </div>
               ))}
-
-              {isUserTyping && (
-                <div className="mb-3 flex justify-start">
-                  <div className="flex items-center gap-2 rounded-2xl bg-slate-100 px-4 py-3">
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: "0ms" }} />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: "150ms" }} />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: "300ms" }} />
-                  </div>
-                </div>
-              )}
-
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="border-t border-slate-200 bg-white p-4">
-              {isAgentActive ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={inputValue}
-                    onChange={(e) => {
-                      setInputValue(e.target.value);
-                      handleTyping();
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-                    }}
-                    placeholder="Type your reply..."
-                    className="flex-1 rounded-lg border border-slate-200 px-4 py-2 text-sm outline-none focus:border-blue-400"
-                  />
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={!inputValue.trim()}
-                    className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                  </button>
-                </div>
-              ) : (
-                <div className="rounded-lg bg-slate-100 p-3 text-center text-sm text-slate-500">
-                  Take over to send messages
-                </div>
-              )}
+            <div className="border-t p-4 flex gap-2 bg-white">
+              <input
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
+                placeholder="Type a message..."
+                className="flex-1 border rounded-lg px-4 py-2"
+              />
+              <button
+                onClick={handleSendMessage}
+                disabled={!inputValue.trim()}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg disabled:opacity-50"
+              >
+                <Send size={18} />
+              </button>
             </div>
           </>
         ) : (
-          <div className="flex flex-1 items-center justify-center">
+          <div className="flex-1 flex items-center justify-center text-gray-500">
             <div className="text-center">
-              <svg className="mx-auto h-16 w-16 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              <p className="mt-4 text-lg font-medium text-slate-900">Select a conversation</p>
-              <p className="mt-2 text-sm text-slate-500">
-                Choose a user from the list to view their chat
-              </p>
+              <MessageCircle size={48} className="mx-auto mb-4" />
+              <p>Select a conversation</p>
             </div>
           </div>
         )}
@@ -572,5 +327,3 @@ export function AdminDashboard() {
     </div>
   );
 }
-
-export default AdminDashboard;

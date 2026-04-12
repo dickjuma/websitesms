@@ -34,7 +34,7 @@ export function ServicesCTASection() {
 
           <p className="mt-8 text-sm text-blue-200">
             Questions? Our team is ready to help.{" "}
-            <a href="mailto:hello@sma-systems.com" className="font-semibold text-white underline hover:text-blue-100">
+            <a href="mailto:hello@smassystems.com" className="font-semibold text-white underline hover:text-blue-100">
               Email us
             </a>{" "}
             or chat with our AI assistant.

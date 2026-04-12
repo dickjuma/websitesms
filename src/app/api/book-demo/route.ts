@@ -33,7 +33,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Save to database
+    // Send confirmation email to user FIRST (don't fail if this errors)
+    console.log("=== Sending demo confirmation to user ===");
+    try {
+      const emailResult = await sendBookDemoConfirmation(email, name, {
+        date: preferredDate,
+        time: preferredTime,
+        serviceType,
+      });
+      console.log("Demo confirmation email sent to:", email, "Result:", JSON.stringify(emailResult));
+    } catch (emailError) {
+      console.error("Failed to send demo confirmation email:", emailError);
+    }
+
+    // Send notification email to team
+    console.log("=== Sending demo notification to team ===");
+    try {
+      const teamResult = await sendBookDemoNotificationToTeam({
+        name,
+        email,
+        company,
+        phone: phone || "Not provided",
+        serviceType,
+        preferredDate,
+        preferredTime,
+        teamSize,
+        notes: notes || "None",
+      });
+      console.log("Demo notification email sent for:", name, "Result:", JSON.stringify(teamResult));
+    } catch (emailError) {
+      console.error("Failed to send demo team notification email:", emailError);
+    }
+
+    // Save to database AFTER sending emails
     const submission = await saveBookDemoSubmission({
       name,
       email,
@@ -44,26 +76,6 @@ export async function POST(request: NextRequest) {
       preferredTime,
       teamSize,
       notes: notes || null,
-    });
-
-    // Send confirmation email to user
-    await sendBookDemoConfirmation(email, name, {
-      date: preferredDate,
-      time: preferredTime,
-      serviceType,
-    });
-
-    // Send notification email to team
-    await sendBookDemoNotificationToTeam({
-      name,
-      email,
-      company,
-      phone: phone || "Not provided",
-      serviceType,
-      preferredDate,
-      preferredTime,
-      teamSize,
-      notes: notes || "None",
     });
 
     return NextResponse.json(

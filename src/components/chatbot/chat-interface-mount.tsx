@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 
 const ChatInterface = dynamic(
-  () => import("@/components/chatbot/chat-interface").then((module) => module.ChatInterface),
+  () => import("@/components/chatbot/chat-interface").then((module) => module.default),
   { ssr: false },
 );
 

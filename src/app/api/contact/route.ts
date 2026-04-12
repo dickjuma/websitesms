@@ -33,7 +33,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Save to database
+    // Send confirmation email to user FIRST (don't fail if this errors)
+    console.log("=== Sending contact confirmation to user ===");
+    try {
+      const emailResult = await sendContactConfirmation(email, name, message);
+      console.log("Contact confirmation email sent to:", email, "Result:", JSON.stringify(emailResult));
+    } catch (emailError) {
+      console.error("Failed to send confirmation email:", emailError);
+    }
+
+    // Send notification email to team
+    console.log("=== Sending contact notification to team ===");
+    try {
+      const teamResult = await sendContactNotificationToTeam(
+        name,
+        email,
+        company,
+        subject,
+        message,
+        serviceType
+      );
+      console.log("Contact notification email sent for:", name, "Result:", JSON.stringify(teamResult));
+    } catch (emailError) {
+      console.error("Failed to send team notification email:", emailError);
+    }
+
+    // Save to database AFTER sending emails
     const submission = await saveContactSubmission({
       name,
       email,
@@ -43,19 +68,6 @@ export async function POST(request: NextRequest) {
       phone,
       serviceType,
     });
-
-    // Send confirmation email to user
-    await sendContactConfirmation(email, name, message);
-
-    // Send notification email to team
-    await sendContactNotificationToTeam(
-      name,
-      email,
-      company,
-      subject,
-      message,
-      serviceType
-    );
 
     return NextResponse.json(
       {

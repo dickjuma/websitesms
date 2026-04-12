@@ -1,0 +1,15 @@
+# Root directory - ignore stray files that are not part of website/
+Lead.ts
+Message.ts
+server.ts
+socket.ts
+mongodb.ts
+MediaUploader.tsx
+RefreshControl.tsx
+layout.tsx
+page.tsx
+route.ts
+chatbot_route.ts
+create-content.js
+create-page-content.js
+fix-services.js

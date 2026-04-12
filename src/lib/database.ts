@@ -151,3 +151,71 @@ export async function saveBookDemoSubmission(data: Omit<BookDemoSubmission, "_id
     status: "new",
   };
 }
+
+export async function getQuoteRequests(options?: { limit?: number; skip?: number; search?: string }): Promise<{ quotes: QuoteRequest[]; total: number }> {
+  const { db } = await connectToDatabase();
+  const collection = db.collection<QuoteRequest>("quote_requests");
+
+  const query: Record<string, unknown> = {};
+  if (options?.search) {
+    const searchRegex = { $regex: options.search, $options: "i" };
+    query.$or = [
+      { name: searchRegex },
+      { email: searchRegex },
+      { company: searchRegex },
+      { projectType: searchRegex },
+    ];
+  }
+
+  const [quotes, total] = await Promise.all([
+    collection
+      .find(query)
+      .sort({ createdAt: -1 })
+      .skip(options?.skip || 0)
+      .limit(options?.limit || 20)
+      .toArray(),
+    collection.countDocuments(query),
+  ]);
+
+  return { quotes, total };
+}
+
+export async function getBookDemoSubmissions(options?: { limit?: number; skip?: number; search?: string }): Promise<{ demos: BookDemoSubmission[]; total: number }> {
+  const { db } = await connectToDatabase();
+  const collection = db.collection<BookDemoSubmission>("book_demo_requests");
+
+  const query: Record<string, unknown> = {};
+  if (options?.search) {
+    const searchRegex = { $regex: options.search, $options: "i" };
+    query.$or = [
+      { name: searchRegex },
+      { email: searchRegex },
+      { company: searchRegex },
+      { serviceType: searchRegex },
+    ];
+  }
+
+  const [demos, total] = await Promise.all([
+    collection
+      .find(query)
+      .sort({ createdAt: -1 })
+      .skip(options?.skip || 0)
+      .limit(options?.limit || 20)
+      .toArray(),
+    collection.countDocuments(query),
+  ]);
+
+  return { demos, total };
+}
+
+export async function updateQuoteRequestStatus(id: string, status: QuoteRequest["status"]): Promise<void> {
+  const { db } = await connectToDatabase();
+  const collection = db.collection<QuoteRequest>("quote_requests");
+  await collection.updateOne({ _id: id }, { $set: { status } });
+}
+
+export async function updateBookDemoStatus(id: string, status: BookDemoSubmission["status"]): Promise<void> {
+  const { db } = await connectToDatabase();
+  const collection = db.collection<BookDemoSubmission>("book_demo_requests");
+  await collection.updateOne({ _id: id }, { $set: { status } });
+}

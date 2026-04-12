@@ -1,12 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectToDatabase } from '@/lib/database';
+import { connectMongoClientWithFallback } from '@/lib/mongo-connection';
 import { ObjectId } from 'mongodb';
 
 export async function GET() {
   try {
-    const { db } = await connectToDatabase();
+    const client = await connectMongoClientWithFallback();
+    const db = client.db("sma_systems");
     const team = await db.collection('team').find({}).sort({ order: 1 }).toArray();
-    return NextResponse.json({ success: true, data: team });
+    const formatted = team.map((m: any) => ({
+      _id: String(m._id),
+      name: m.name || "",
+      role: m.role || "",
+      bio: m.bio || "",
+      image: m.photoUrl || m.image || "",
+      department: m.department || "Other",
+      linkedin: m.linkedin || "",
+    }));
+    return NextResponse.json({ success: true, data: formatted });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ success: false, message: errorMessage }, { status: 500 });
@@ -16,7 +26,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { db } = await connectToDatabase();
+    const client = await connectMongoClientWithFallback();
+    const db = client.db("sma_systems");
     
     const member = {
       ...body,
@@ -43,7 +54,8 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'ID required' }, { status: 400 });
     }
     
-    const { db } = await connectToDatabase();
+    const client = await connectMongoClientWithFallback();
+    const db = client.db("sma_systems");
     await db.collection('team').updateOne(
       { _id: new ObjectId(id) },
       { $set: { ...updateData, updatedAt: new Date() } }
@@ -65,7 +77,8 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'ID required' }, { status: 400 });
     }
     
-    const { db } = await connectToDatabase();
+    const client = await connectMongoClientWithFallback();
+    const db = client.db("sma_systems");
     await db.collection('team').deleteOne({ _id: new ObjectId(id) });
     
     return NextResponse.json({ success: true });

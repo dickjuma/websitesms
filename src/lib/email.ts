@@ -2,41 +2,49 @@ import { Resend } from "resend";
 import { getSiteInfoSettings } from "@/lib/site-settings";
 
 function getEmailClient() {
-  if (!process.env.RESEND_API_KEY) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.RESEND_FROM_EMAIL;
+  
+  console.log("Resend config - API key set:", !!apiKey, "From email set:", !!fromEmail);
+  
+  if (!apiKey) {
     throw new Error("RESEND_API_KEY is not set");
   }
 
-  if (!process.env.RESEND_FROM_EMAIL) {
+  if (!fromEmail) {
     throw new Error("RESEND_FROM_EMAIL is not set");
   }
 
   return {
-    resend: new Resend(process.env.RESEND_API_KEY),
-    fromEmail: process.env.RESEND_FROM_EMAIL,
+    resend: new Resend(apiKey),
+    fromEmail: fromEmail,
   };
 }
 
 async function getEmailProfile() {
   try {
     const settings = await getSiteInfoSettings();
+    // Use notificationsEmail if set, otherwise fall back to email, then fallback email
+    const notificationsEmail = settings.notificationsEmail || settings.email || "info@smassystems.com";
+    console.log("Email profile - notificationsEmail:", notificationsEmail, "from settings:", settings.notificationsEmail, "email:", settings.email);
     return {
       companyName: settings.companyName,
-      websiteUrl: settings.websiteUrl || "https://sma-systems.com",
+      websiteUrl: settings.websiteUrl || "https://smassystems.com",
       primaryEmail: settings.email,
       supportEmail: settings.supportEmail || settings.email,
       salesEmail: settings.salesEmail || settings.email,
-      notificationsEmail: settings.notificationsEmail || settings.email,
+      notificationsEmail: notificationsEmail,
       phone: settings.phone,
     };
   } catch (error) {
     console.error("Failed to load email profile from site settings:", error);
     return {
       companyName: "SMA Systems and Softwares",
-      websiteUrl: "https://sma-systems.com",
-      primaryEmail: "hello@sma-systems.com",
-      supportEmail: "hello@sma-systems.com",
-      salesEmail: "hello@sma-systems.com",
-      notificationsEmail: "hello@sma-systems.com",
+      websiteUrl: "https://smassystems.com",
+      primaryEmail: "hello@smassystems.com",
+      supportEmail: "hello@smassystems.com",
+      salesEmail: "hello@smassystems.com",
+      notificationsEmail: "info@smassystems.com",
       phone: "+254 719 832 719",
     };
   }
@@ -46,6 +54,7 @@ export async function sendContactConfirmation(email: string, name: string, messa
   try {
     const { resend, fromEmail } = getEmailClient();
     const profile = await getEmailProfile();
+    console.log("Sending contact confirmation - from:", fromEmail, "to:", email);
     const response = await resend.emails.send({
       from: fromEmail,
       to: email,
@@ -62,6 +71,12 @@ export async function sendContactConfirmation(email: string, name: string, messa
       `,
     });
 
+    console.log("Contact confirmation response:", JSON.stringify(response));
+    
+    if (response.error) {
+      console.error("Resend error for contact confirmation:", response.error);
+    }
+    
     return response;
   } catch (error) {
     console.error("Failed to send contact confirmation email:", error);
@@ -80,6 +95,8 @@ export async function sendContactNotificationToTeam(
   try {
     const { resend, fromEmail } = getEmailClient();
     const profile = await getEmailProfile();
+    console.log("Sending contact notification to:", profile.notificationsEmail, "from:", fromEmail);
+    
     const response = await resend.emails.send({
       from: fromEmail,
       to: profile.notificationsEmail,
@@ -97,14 +114,15 @@ export async function sendContactNotificationToTeam(
           <p><strong>Message:</strong></p>
           <p style="background: #f0f0f0; padding: 10px; border-radius: 5px;">${message}</p>
           <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;" />
-          <p><a href="${profile.websiteUrl}/admin">View in dashboard</a></p>
+<p><a href="https://smassystems.com/admin">View in dashboard</a></p>
         </div>
       `,
     });
 
+    console.log("Contact notification response:", JSON.stringify(response));
     return response;
   } catch (error) {
-    console.error("Failed to send team notification email:", error);
+    console.error("Failed to send contact team notification email:", error);
     throw error;
   }
 }
@@ -146,6 +164,7 @@ export async function sendQuoteRequestConfirmation(email: string, name: string, 
   try {
     const { resend, fromEmail } = getEmailClient();
     const profile = await getEmailProfile();
+    console.log("Sending quote confirmation - from:", fromEmail, "to:", email);
     const response = await resend.emails.send({
       from: fromEmail,
       to: email,
@@ -163,6 +182,12 @@ export async function sendQuoteRequestConfirmation(email: string, name: string, 
       `,
     });
 
+    console.log("Quote confirmation response:", JSON.stringify(response));
+    
+    if (response.error) {
+      console.error("Resend error for quote confirmation:", response.error);
+    }
+    
     return response;
   } catch (error) {
     console.error("Failed to send quote confirmation email:", error);
@@ -182,9 +207,11 @@ export async function sendQuoteRequestToTeam(
   try {
     const { resend, fromEmail } = getEmailClient();
     const profile = await getEmailProfile();
+console.log("Sending quote notification to:", profile.notificationsEmail, "from:", fromEmail);
+    
     const response = await resend.emails.send({
       from: fromEmail,
-      to: profile.salesEmail,
+      to: profile.notificationsEmail,
       replyTo: email,
       subject: `New Quote Request: ${projectType}`,
       html: `
@@ -200,11 +227,17 @@ export async function sendQuoteRequestToTeam(
           <p><strong>Details:</strong></p>
           <p style="background: #f0f0f0; padding: 10px; border-radius: 5px;">${message}</p>
           <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;" />
-          <p><a href="${profile.websiteUrl}/admin">View in dashboard</a></p>
+<p><a href="https://smassystems.com/admin">View in dashboard</a></p>
         </div>
       `,
     });
 
+    console.log("Quote notification response:", JSON.stringify(response));
+    
+    if (response.error) {
+      console.error("Resend error for quote notification:", response.error);
+    }
+    
     return response;
   } catch (error) {
     console.error("Failed to send quote notification email:", error);
@@ -271,6 +304,13 @@ export async function sendBookDemoConfirmation(
       `,
     });
 
+    console.log("Book demo confirmation response:", JSON.stringify(response));
+    
+    if (response.error) {
+      console.error("Resend error for demo confirmation:", response.error);
+      throw new Error(response.error.message);
+    }
+
     return response;
   } catch (error) {
     console.error("Failed to send book demo confirmation email:", error);
@@ -299,6 +339,8 @@ export async function sendBookDemoNotificationToTeam(demoData: {
       day: 'numeric'
     });
 
+console.log("Sending demo notification to:", profile.notificationsEmail, "from:", fromEmail);
+    
     const response = await resend.emails.send({
       from: fromEmail,
       to: profile.notificationsEmail,
@@ -335,10 +377,16 @@ export async function sendBookDemoNotificationToTeam(demoData: {
           <p style="font-size: 12px; color: #666;">
             <strong>Next Steps:</strong> Add to your calendar, prepare talking points, and consider who should attend from your side to maximize the conversation.
           </p>
-        </div>
+</div>
       `,
     });
 
+    console.log("Demo notification response:", JSON.stringify(response));
+    
+    if (response.error) {
+      console.error("Resend error for demo notification:", response.error);
+    }
+    
     return response;
   } catch (error) {
     console.error("Failed to send book demo notification email:", error);
@@ -369,4 +417,76 @@ export async function sendAdminReplyEmail(params: {
       </div>
     `,
   });
+}
+
+export async function sendNewLeadNotificationToTeam(lead: {
+  name?: string;
+  email?: string;
+  phone?: string;
+  businessNeed?: string;
+  qualification?: string;
+}) {
+  try {
+    const { resend, fromEmail } = getEmailClient();
+    const profile = await getEmailProfile();
+    const response = await resend.emails.send({
+      from: fromEmail,
+      to: profile.notificationsEmail,
+      replyTo: lead.email || undefined,
+      subject: `New Lead from Chat: ${lead.name || "Anonymous"} - ${lead.qualification || "COLD"}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2>New Lead from Chatbot</h2>
+          <div style="background: #f0f0f0; padding: 15px; border-radius: 8px; margin: 15px 0;">
+            <p><strong>Name:</strong> ${lead.name || "Not provided"}</p>
+            <p><strong>Email:</strong> ${lead.email ? `<a href="mailto:${lead.email}">${lead.email}</a>` : "Not provided"}</p>
+            <p><strong>Phone:</strong> ${lead.phone || "Not provided"}</p>
+            <p><strong>Business Need:</strong> ${lead.businessNeed || "Not provided"}</p>
+            <p><strong>Qualification:</strong> ${lead.qualification || "COLD"}</p>
+          </div>
+          <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;" />
+          <p><a href="${profile.websiteUrl}/admin/leads">View in dashboard</a></p>
+        </div>
+      `,
+    });
+
+    return response;
+  } catch (error) {
+    console.error("Failed to send new lead notification email:", error);
+  }
+}
+
+export async function sendNewChatMessageNotificationToTeam(lead: {
+  name?: string;
+  email?: string;
+  phone?: string;
+}, message: string) {
+  try {
+    const { resend, fromEmail } = getEmailClient();
+    const profile = await getEmailProfile();
+    const response = await resend.emails.send({
+      from: fromEmail,
+      to: profile.notificationsEmail,
+      replyTo: lead.email || undefined,
+      subject: `New Chat Message from ${lead.name || "Visitor"}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2>New Chat Message</h2>
+          <div style="background: #f0f0f0; padding: 15px; border-radius: 8px; margin: 15px 0;">
+            <p><strong>From:</strong> ${lead.name || "Anonymous"}</p>
+            <p><strong>Email:</strong> ${lead.email ? `<a href="mailto:${lead.email}">${lead.email}</a>` : "Not provided"}</p>
+            <p><strong>Phone:</strong> ${lead.phone || "Not provided"}</p>
+          </div>
+          <p><strong>Message:</strong></p>
+          <p style="background: #e8f4f8; padding: 10px; border-radius: 5px;">${message}</p>
+          <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;" />
+          <p><a href="${profile.websiteUrl}/admin/chat">View in dashboard</a></p>
+        </div>
+      `,
+    });
+
+    return response;
+  } catch (error) {
+    console.error("Failed to send new chat message notification email:", error);
+  }
 }

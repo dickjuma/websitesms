@@ -1,23 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { requireAdminAuth } from "@/lib/admin-auth";
 import { connectToMongoose } from "@/lib/mongoose";
 import { LeadModel } from "@/models/Lead";
 import { MessageModel } from "@/models/Message";
 import { VisitorModel } from "@/models/Visitor";
 
-function getAdminToken(request: NextRequest) {
-  const auth = request.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  return auth.slice(7);
-}
-
 export async function GET(request: NextRequest) {
-  try {
-    const token = getAdminToken(request);
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const authError = requireAdminAuth(request);
 
+  if (authError) {
+    return authError;
+  }
+
+  try {
     const period = request.nextUrl.searchParams.get("period") || "7d";
     const days = period === "30d" ? 30 : period === "90d" ? 90 : 7;
     const startDate = new Date();

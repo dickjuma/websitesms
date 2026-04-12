@@ -12,7 +12,6 @@ import type {
 } from "@/lib/chat/types";
 import { getKnowledgeContextForQuery } from "@/lib/chat/website-knowledge";
 import { connectToMongoose } from "@/lib/mongoose";
-import { emitAgentJoin, emitChatMessage } from "@/lib/socket/server";
 import {
   classifyLead,
   extractLeadSignals,
@@ -24,6 +23,19 @@ import { ChatSessionModel } from "@/models/ChatSession";
 import { LeadModel } from "@/models/Lead";
 import { MessageModel } from "@/models/Message";
 import { VisitorModel } from "@/models/Visitor";
+import { sendNewLeadNotificationToTeam, sendNewChatMessageNotificationToTeam } from "@/lib/email";
+
+function emitChatMessageIgnore(_payload: any) {}
+function emitAgentJoinIgnore(_payload: any) {}
+
+let emitChatMessage: (payload: any) => void = emitChatMessageIgnore;
+let emitAgentJoin: (payload: any) => void = emitAgentJoinIgnore;
+
+try {
+  const socketModule = require("@/lib/socket/server");
+  if (socketModule.emitChatMessage) emitChatMessage = socketModule.emitChatMessage;
+  if (socketModule.emitAgentJoin) emitAgentJoin = socketModule.emitAgentJoin;
+} catch {}
 
 const FALLBACK_REPLY =
   "Thanks for reaching out. I can help with project scope, pricing direction, or getting a human specialist into the conversation.";
@@ -554,6 +566,16 @@ export async function getOrCreateLead(params: {
         },
       ],
     });
+
+    sendNewLeadNotificationToTeam({
+      name: mergedLeadInput.name || "",
+      email: mergedLeadInput.email || "",
+      phone: mergedLeadInput.phone || "",
+      businessNeed: mergedLeadInput.businessNeed || "",
+      qualification: params.seedMessage
+        ? classifyLead(params.seedMessage)
+        : normalizeQualification(mergedLeadInput.qualification) || "COLD",
+    });
   } else {
     await attachLeadInput(lead, mergedLeadInput);
 
@@ -778,23 +800,42 @@ export async function getLeadMessages(
 ) {
   await connectToMongoose();
 
-  const resolvedSessionId =
-    sessionId ||
-    (await resolveSession({ leadId, createIfMissing: false }))?.id;
+  let resolvedSessionId = sessionId;
+  
+  if (!resolvedSessionId) {
+    const leadObjId = new Types.ObjectId(leadId);
+    const lead = await LeadModel.findById(leadObjId)
+      .select("currentSessionId")
+      .lean();
+    
+    if (lead?.currentSessionId) {
+      resolvedSessionId = lead.currentSessionId;
+    } else {
+      const latestSession = await ChatSessionModel.findOne(
+        { leadId: leadObjId }
+      )
+        .sort({ lastActivityAt: -1 })
+        .limit(1)
+        .lean();
+      
+      resolvedSessionId = latestSession?.sessionId;
+    }
+  }
 
   if (!resolvedSessionId) {
     return [];
   }
 
+  const leadObjId = new Types.ObjectId(leadId);
   const messages = await MessageModel.find({
-    leadId: assertLeadId(leadId),
+    leadId: leadObjId,
     sessionId: resolvedSessionId,
   } as any)
     .sort({ timestamp: -1 })
     .limit(limit)
     .lean();
 
-  return messages.reverse().map((message: any) => serializeMessage(message));
+  return messages.map((message: any) => serializeMessage(message));
 }
 
 async function refreshLeadAndSessionSummary(leadId: string, sessionId: string) {
@@ -950,6 +991,7 @@ async function buildChatState(params: {
   sessionId?: string;
   visitorId?: string;
   limit?: number;
+  includeSessions?: boolean;
 }) {
   await connectToMongoose();
 
@@ -965,6 +1007,15 @@ async function buildChatState(params: {
     (params.visitorId ? await LeadModel.findOne({ visitorId: params.visitorId }).lean() : null);
 
   if (!lead) {
+    if (params.sessionId) {
+      return {
+        lead: null,
+        session: null,
+        sessions: [],
+        messages: [],
+        newSessionId: params.sessionId,
+      };
+    }
     throw new Error("Lead not found.");
   }
 
@@ -986,13 +1037,29 @@ async function buildChatState(params: {
       .lean());
 
   if (!session) {
+    if (lead) {
+      const createdSession = await createChatSession({
+        leadId: lead._id.toString(),
+        visitorId: lead.visitorId || "",
+      });
+      if (createdSession.id) {
+        const messages = await getLeadMessages(lead._id.toString(), params.limit || 60, createdSession.id);
+        return {
+          lead: serializeLead(lead),
+          session: serializeSession(createdSession),
+          sessions: [],
+          messages,
+        };
+      }
+    }
     throw new Error("No session found.");
   }
 
-  const [messages, sessions] = await Promise.all([
-    getLeadMessages(lead._id.toString(), params.limit || 60, session.sessionId),
-    listSessionsForLead(lead._id.toString(), 10),
-  ]);
+  const messages = await getLeadMessages(lead._id.toString(), params.limit || 60, session.sessionId);
+  
+  const sessions = params.includeSessions !== false 
+    ? await listSessionsForLead(lead._id.toString(), 10)
+    : [];
 
   return {
     lead: serializeLead(lead),
@@ -1067,6 +1134,10 @@ export async function processUserMessage(params: {
       sessionId: session.id,
     });
 
+    if (!snapshot.lead || !snapshot.session) {
+      throw new Error("Failed to load chat snapshot.");
+    }
+
     return {
       ...snapshot,
       reply: null,
@@ -1081,6 +1152,12 @@ export async function processUserMessage(params: {
     message: params.message,
     clientMessageId: params.clientMessageId,
   });
+
+  sendNewChatMessageNotificationToTeam({
+    name: lead.name,
+    email: lead.email,
+    phone: lead.phone,
+  }, params.message);
 
   emitChatMessage(userMessage);
 
@@ -1104,6 +1181,10 @@ export async function processUserMessage(params: {
       leadId: lead.id,
       sessionId: session.id,
     });
+
+    if (!snapshot.lead || !snapshot.session) {
+      throw new Error("Failed to load chat snapshot.");
+    }
 
     return {
       ...snapshot,
@@ -1141,6 +1222,10 @@ export async function processUserMessage(params: {
     leadId: refreshedLead.id,
     sessionId: session.id,
   });
+
+  if (!snapshot.lead || !snapshot.session) {
+    throw new Error("Failed to load chat snapshot.");
+  }
 
   return {
     ...snapshot,
@@ -1349,39 +1434,23 @@ export async function listLiveChatLeads(limit = 100) {
     return [];
   }
 
-  const leadIds = leads.map((lead) => lead._id);
-  const latestMessages = await MessageModel.aggregate<{
-    _id: Types.ObjectId;
-    message: string;
-    timestamp: Date;
-  }>([
-    {
-      $match: {
-        leadId: { $in: leadIds },
-      },
-    },
-    {
-      $sort: {
-        leadId: 1,
-        timestamp: -1,
-      },
-    },
-    {
-      $group: {
-        _id: "$leadId",
-        message: { $first: "$message" },
-        timestamp: { $first: "$timestamp" },
-      },
-    },
-  ]);
+  const leadIds = leads.map((lead) => lead._id.toString());
+  
+  const sessions = await ChatSessionModel.find(
+    { leadId: { $in: leadIds.map(id => new Types.ObjectId(id)) } },
+    { leadId: 1, sessionId: 1, lastMessagePreview: 1, lastActivityAt: 1 }
+  )
+  .sort({ lastActivityAt: -1 })
+  .limit(limit)
+  .lean();
 
-  const latestMessageByLead = new Map(
-    latestMessages.map((message) => [message._id.toString(), message]),
+  const sessionByLeadId = new Map(
+    sessions.map(s => [s.leadId.toString(), s])
   );
 
   return leads
     .map((lead) => {
-      const latestMessage = latestMessageByLead.get(lead._id.toString());
+      const session = sessionByLeadId.get(lead._id.toString());
 
       return {
         id: lead._id.toString(),
@@ -1389,8 +1458,8 @@ export async function listLiveChatLeads(limit = 100) {
         email: lead.email || "",
         status: lead.status || "new",
         isHumanActive: Boolean(lead.isHumanActive),
-        lastMessage: latestMessage?.message || "",
-        lastMessageAt: toIsoString(latestMessage?.timestamp || lead.lastActivityAt || lead.createdAt),
+        lastMessage: session?.lastMessagePreview || "",
+        lastMessageAt: toIsoString(session?.lastActivityAt || lead.lastActivityAt || lead.createdAt),
       };
     })
     .sort(

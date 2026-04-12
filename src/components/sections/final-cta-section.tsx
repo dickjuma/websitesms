@@ -127,10 +127,10 @@ export function FinalCtaSection() {
         <div className="relative border-t border-white/10 px-8 py-4 text-center text-sm text-blue-200 sm:flex sm:items-center sm:justify-between sm:text-left lg:px-16">
           <span>Questions? Our enterprise team is ready to help.</span>
           <a
-            href="mailto:enterprise@sma-systems.com"
+            href="mailto:enterprise@smassystems.com"
             className="mt-2 inline-block font-semibold text-white underline hover:text-blue-100 sm:mt-0"
           >
-            enterprise@sma-systems.com
+            enterprise@smassystems.com
           </a>
         </div>
       </div>

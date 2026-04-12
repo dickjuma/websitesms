@@ -10,7 +10,7 @@ import {
   type RealtimeMessage,
   type TypingStatus,
 } from "@/lib/realtime-store";
-import { getSocketClient } from "@/lib/socket/client";
+import { getSocketClient, type RealtimeSocketClient } from "@/lib/socket/client";
 
 interface UseRealtimeChatOptions {
   enabled?: boolean;
@@ -35,7 +35,7 @@ export function useRealtimeChat(options: UseRealtimeChatOptions = {}) {
     onNewLead,
   } = options;
 
-  const socketRef = useRef<Awaited<ReturnType<typeof getSocketClient>> | null>(null);
+  const socketRef = useRef<RealtimeSocketClient | null>(null);
 
   const {
     isConnected,
@@ -140,6 +140,12 @@ export function useRealtimeChat(options: UseRealtimeChatOptions = {}) {
         const socket = await getSocketClient();
 
         if (!isMounted) {
+          return;
+        }
+
+        if (!socket) {
+          setConnected(false);
+          setConnecting(false);
           return;
         }
 

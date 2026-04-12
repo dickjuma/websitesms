@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/database';
-import { ObjectId } from 'mongodb';
 import bcrypt from 'bcrypt';
+import { createAdminToken } from '@/lib/admin-auth';
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,7 +23,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'Invalid credentials' }, { status: 401 });
     }
 
-    const token = Buffer.from(`${admin._id}:${Date.now()}`).toString('base64');
+    const token = createAdminToken({
+      adminId: admin._id.toString(),
+      email: admin.email,
+      name: admin.name,
+    });
 
     return NextResponse.json({
       success: true,

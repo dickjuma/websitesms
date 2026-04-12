@@ -1,9 +1,25 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, Shield, Trash2, User } from "lucide-react";
+import { Plus, Search, Shield } from "lucide-react";
 import { TeamTable } from "@/components/admin/team/table";
-import { useTeamStore } from "@/lib/admin-store";
+import { AddMemberModal } from "@/components/admin/team/add-member-modal";
+import { EditMemberModal } from "@/components/admin/team/edit-member-modal";
+
+interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+  image?: string;
+  photoUrl?: string;
+  bio?: string;
+  department?: string;
+  linkedin?: string;
+  order?: number;
+  lastActiveAt?: string | null;
+}
 
 function TableSkeleton() {
   return (
@@ -26,9 +42,8 @@ export default function TeamPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
-  
-  // Use Zustand store
-  const { members, setMembers, setLoading: setStoreLoading } = useTeamStore();
+  const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
+  const [members, setMembers] = useState<TeamMember[]>([]);
 
   useEffect(() => {
     setMounted(true);
@@ -37,8 +52,6 @@ export default function TeamPage() {
 
   const loadTeam = async () => {
     setLoading(true);
-    setStoreLoading(true);
-    
     try {
       const response = await fetch("/api/admin/team", {
         headers: {
@@ -48,28 +61,96 @@ export default function TeamPage() {
       });
 
       if (!response.ok) return;
-
-      const data = (await response.json()) as { 
-        team: Array<{
-          id: string;
-          name: string;
-          email: string;
-          role: "admin" | "agent";
-          status: "active" | "inactive";
-          lastActiveAt: string | null;
-        }>;
-      };
-      
-      setMembers(data.team);
+      const data = await response.json();
+      setMembers(data.team || []);
     } catch (error) {
       console.error("Failed to load team:", error);
+      setMembers([]);
     } finally {
       setLoading(false);
-      setStoreLoading(false);
+    }
+  };
+
+  const handleAddMember = async (member: {
+    name: string;
+    email: string;
+    role: string;
+    bio?: string;
+    department?: string;
+    linkedin?: string;
+    photoUrl?: string;
+  }) => {
+    try {
+      const response = await fetch("/api/admin/team", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: member.name,
+          email: member.email,
+          role: member.role,
+          bio: member.bio,
+          department: member.department,
+          linkedin: member.linkedin,
+          photoUrl: member.photoUrl,
+        }),
+      });
+
+      if (!response.ok) throw new Error("Failed to add");
+      await loadTeam();
+    } catch (err) {
+      console.error("Add member error:", err);
+      throw err;
+    }
+  };
+
+  const handleDeleteMember = async (id: string) => {
+    if (!confirm("Delete this team member?")) return;
+    try {
+      await fetch(`/api/admin/team?id=${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
+        },
+      });
+      setMembers(members.filter(m => m.id !== id));
+    } catch (err) {
+      console.error("Delete error:", err);
+    }
+  };
+
+  const handleEditMember = async (member: TeamMember) => {
+    try {
+      const response = await fetch("/api/admin/team", {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: member.id,
+          name: member.name,
+          email: member.email,
+          role: member.role,
+          bio: member.bio,
+          department: member.department,
+          linkedin: member.linkedin,
+          photoUrl: member.photoUrl,
+        }),
+      });
+
+      if (!response.ok) throw new Error("Failed to update");
+      await loadTeam();
+    } catch (err) {
+      console.error("Edit error:", err);
+      throw err;
     }
   };
 
   const filteredMembers = useMemo(() => {
+    if (!Array.isArray(members)) return [];
     if (!filter) return members;
     const search = filter.toLowerCase();
     return members.filter(
@@ -83,7 +164,6 @@ export default function TeamPage() {
 
   return (
     <main className="space-y-6">
-      {/* Header */}
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-md">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-3xl">
@@ -108,7 +188,6 @@ export default function TeamPage() {
         </div>
       </section>
 
-      {/* Team Table */}
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-4">
           <div className="relative max-w-md">
@@ -127,17 +206,37 @@ export default function TeamPage() {
           <TableSkeleton />
         ) : (
           <TeamTable 
-            members={filteredMembers} 
+            members={filteredMembers.map(m => ({
+              id: m.id,
+              name: m.name,
+              email: m.email,
+              role: m.role as any,
+              status: (m.status as "active" | "inactive") || "active",
+              photoUrl: m.image,
+              bio: m.bio,
+              department: m.department,
+              linkedin: m.linkedin,
+              lastActiveAt: null,
+            }))} 
             loading={loading}
-            onDelete={(id) => {
-              // Handle delete
-              console.log("Delete member:", id);
-            }}
+            onDelete={handleDeleteMember}
+            onEdit={(member) => setEditingMember({ ...member, status: member.status || "active" })}
           />
         )}
       </section>
 
-      {/* Add Member Modal would go here */}
+      <AddMemberModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onAdd={handleAddMember}
+      />
+
+      <EditMemberModal
+        isOpen={!!editingMember}
+        member={editingMember}
+        onClose={() => setEditingMember(null)}
+        onSave={handleEditMember}
+      />
     </main>
   );
 }

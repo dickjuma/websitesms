@@ -2,20 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/database';
 import { ObjectId } from 'mongodb';
 import bcrypt from 'bcrypt';
+import { getAdminSession } from '@/lib/admin-auth';
 
 export async function PUT(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) {
+    const session = getAdminSession(req);
+
+    if (!session || !ObjectId.isValid(session.adminId)) {
       return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    const decoded = Buffer.from(token, 'base64').toString();
-    const [adminId] = decoded.split(':');
-
-    if (!adminId) {
-      return NextResponse.json({ success: false, message: 'Invalid token' }, { status: 401 });
     }
 
     const { currentPassword, newPassword } = await req.json();
@@ -25,7 +19,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const { db } = await connectToDatabase();
-    const admin = await db.collection('admins').findOne({ _id: new ObjectId(adminId) });
+    const admin = await db.collection('admins').findOne({ _id: new ObjectId(session.adminId) });
 
     if (!admin) {
       return NextResponse.json({ success: false, message: 'Admin not found' }, { status: 404 });
@@ -38,7 +32,7 @@ export async function PUT(req: NextRequest) {
 
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
     await db.collection('admins').updateOne(
-      { _id: new ObjectId(adminId) },
+      { _id: new ObjectId(session.adminId) },
       { $set: { password: hashedNewPassword, updatedAt: new Date() } }
     );
 

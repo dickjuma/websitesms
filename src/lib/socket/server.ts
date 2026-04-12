@@ -13,6 +13,7 @@ import type {
   ServerToClientEvents,
   TypingPayload,
 } from "@/lib/socket/events";
+import { verifyAdminToken } from "@/lib/admin-auth";
 import { SOCKET_PATH } from "@/lib/socket/events";
 
 type TypedSocketServer = SocketIOServer<
@@ -330,7 +331,7 @@ function hasAdminSocketAuth(socket: TypedSocket, payloadToken?: string) {
       ? socket.handshake.auth.adminToken.trim()
       : "");
 
-  return authToken.length > 0;
+  return authToken.length > 0 && Boolean(verifyAdminToken(authToken));
 }
 
 function normalizeJoinPayload(

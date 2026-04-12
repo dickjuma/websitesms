@@ -39,6 +39,24 @@ export async function GET(request: NextRequest) {
       visitorId,
     });
 
+    if (!snapshot.lead && snapshot.newSessionId) {
+      const resolvedLead = await getOrCreateLead({
+        visitorId: visitorId || `visitor-${snapshot.newSessionId}`,
+      });
+
+      const newSession = await createChatSession({
+        leadId: resolvedLead.id,
+        visitorId: visitorId || resolvedLead.visitorId,
+      });
+
+      if (newSession.id) {
+        const newSnapshot = await getLeadChatSnapshot({
+          sessionId: newSession.id,
+        });
+        return NextResponse.json(newSnapshot);
+      }
+    }
+
     return NextResponse.json(snapshot);
   } catch (error) {
     console.error("Failed to get chat session:", error);

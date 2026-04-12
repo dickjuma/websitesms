@@ -9,7 +9,7 @@ import { QuickContactModal } from "@/components/forms/quick-contact-modal";
 import { serviceItems } from "@/lib/site-data";
 
 const navLinks = [
-  { label: "Home", href: "/" },
+  { label: "Home", href: "/site" },
   { label: "Services", href: "/services", hasDropdown: true },
   { label: "Solutions", href: "/solutions" },
   { label: "Products", href: "/products" },

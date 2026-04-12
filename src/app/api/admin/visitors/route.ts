@@ -1,25 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { requireAdminAuth } from "@/lib/admin-auth";
 import { connectToMongoose } from "@/lib/mongoose";
 import { VisitorModel } from "@/models/Visitor";
-
-function getAdminToken(request: NextRequest) {
-  const auth = request.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  return auth.slice(7);
-}
 
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export async function GET(request: NextRequest) {
-  try {
-    const token = getAdminToken(request);
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const authError = requireAdminAuth(request);
 
+  if (authError) {
+    return authError;
+  }
+
+  try {
     const pageParam = request.nextUrl.searchParams.get("page");
     const limitParam = request.nextUrl.searchParams.get("limit");
     const searchParam = request.nextUrl.searchParams.get("search")?.trim() || "";

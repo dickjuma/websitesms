@@ -15,6 +15,11 @@ export async function GET(
 
   try {
     const { leadId } = await context.params;
+    
+    if (!leadId || leadId === "undefined") {
+      return NextResponse.json({ messages: [] });
+    }
+    
     const sessionId = request.nextUrl.searchParams.get("sessionId") || undefined;
     const limitParam = request.nextUrl.searchParams.get("limit");
     const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : 40;
@@ -22,6 +27,7 @@ export async function GET(
       Number.isFinite(parsedLimit) && parsedLimit > 0
         ? Math.min(parsedLimit, 100)
         : 40;
+    
     const messages = await getLeadMessages(leadId, limit, sessionId);
 
     return NextResponse.json({ messages });
@@ -29,7 +35,7 @@ export async function GET(
     console.error("Failed to fetch admin chat:", error);
 
     return NextResponse.json(
-      { error: "Failed to fetch chat history." },
+      { error: "Failed to fetch chat history.", messages: [] },
       { status: 500 },
     );
   }

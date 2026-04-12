@@ -1,16 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import {
-  getSocketClient,
-  joinAsAdmin,
-  sendChatMessage,
-  takeOverChat,
-  returnToAi,
-  markAsRead,
-  type ActiveUser,
-} from "@/lib/socket/client";
-import type { OutboundMessagePayload, SendMessagePayload } from "@/lib/socket/events";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 interface ChatMessage {
   id: string;
@@ -22,14 +12,18 @@ interface ChatMessage {
   clientMessageId?: string;
 }
 
-interface LiveLead extends ActiveUser {
+interface LiveLead {
+  visitorId: string;
+  name: string;
   unreadCount: number;
-  lastMessage?: string;
-  lastMessageAt?: string;
+  joinedAt: string;
+  socketId: string;
   status: "new" | "contacted" | "closed";
   isHumanActive: boolean;
   email?: string;
   leadId: string;
+  lastMessage?: string;
+  lastMessageAt?: string;
 }
 
 interface UseAdminSocketReturn {
@@ -45,15 +39,13 @@ interface UseAdminSocketReturn {
 }
 
 export function useAdminSocket(adminId: string, adminName: string): UseAdminSocketReturn {
-  const [isConnected, setIsConnected] = useState(false);
+  const [isConnected] = useState(false);
   const [activeLeads, setActiveLeads] = useState<LiveLead[]>([]);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [typingUsers, setTypingUsers] = useState<Map<string, boolean>>(new Map());
-  const socketRef = useRef<Awaited<ReturnType<typeof getSocketClient>> | null>(null);
-  const initializedRef = useRef(false);
-  const cleanupRef = useRef<(() => void) | null>(null);
   const selectedLeadIdRef = useRef<string | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const selectedLead = activeLeads.find(l => l.leadId === selectedLeadId) || null;
 
@@ -61,195 +53,180 @@ export function useAdminSocket(adminId: string, adminName: string): UseAdminSock
     selectedLeadIdRef.current = selectedLeadId;
   }, [selectedLeadId]);
 
+  // Poll for leads
+  const pollLeads = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/leads?view=chat&limit=50", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("adminToken")}` },
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      
+      if (data.leads) {
+        setActiveLeads(data.leads.map((l: any) => ({
+          ...l,
+          visitorId: l.visitorId || l.leadId,
+          leadId: l.id || l.leadId,
+        })));
+      }
+    } catch (err) {
+      console.error("Failed to poll leads:", err);
+    }
+  }, []);
+
+  // Poll for messages
+  const pollMessages = useCallback(async () => {
+    if (!selectedLeadIdRef.current) return;
+    
+    try {
+      const res = await fetch(`/api/admin/chat/${selectedLeadIdRef.current}?limit=40`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("adminToken")}` },
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      
+      if (data.messages) {
+        setMessages(data.messages.map((m: any) => ({
+          id: m.id || m._id,
+          leadId: m.leadId,
+          sessionId: m.sessionId,
+          sender: m.sender,
+          message: m.message || m.text,
+          timestamp: m.timestamp,
+          clientMessageId: m.clientMessageId,
+        })));
+      }
+    } catch (err) {
+      console.error("Failed to poll messages:", err);
+    }
+  }, []);
+
+  // Start polling on mount
   useEffect(() => {
-    if (initializedRef.current || !adminId) return;
-    initializedRef.current = true;
+    if (!adminId) return;
 
-    let isMounted = true;
-
-    (async () => {
-      try {
-        const socket = await getSocketClient();
-        socketRef.current = socket;
-
-        const onConnect = () => {
-          if (isMounted) {
-            setIsConnected(true);
-            void joinAsAdmin({ adminId, adminName });
-          }
-        };
-
-        const onDisconnect = () => {
-          if (isMounted) setIsConnected(false);
-        };
-
-        const onUsersUpdate = (users: ActiveUser[]) => {
-          if (!isMounted) return;
-          setActiveLeads(prev => {
-            const userMap = new Map(users.map(u => [u.visitorId, u]));
-            return prev.map(lead => {
-              const user = userMap.get(lead.visitorId);
-              return user
-                ? {
-                    ...lead,
-                    name: user.name,
-                    unreadCount: user.unreadCount,
-                  }
-                : lead;
-            });
-          });
-        };
-
-        const onNewLead = (lead: { leadId: string; visitorId: string; name: string; timestamp: string }) => {
-          if (!isMounted) return;
-          setActiveLeads(prev => {
-            if (prev.some(l => l.leadId === lead.leadId)) return prev;
-            return [{
-              ...lead,
-              socketId: lead.leadId,
-              joinedAt: lead.timestamp,
-              unreadCount: 0,
-              status: "new" as const,
-              isHumanActive: false,
-              email: "",
-              lastMessage: "",
-              lastMessageAt: lead.timestamp,
-              leadId: lead.leadId,
-            }, ...prev];
-          });
-        };
-
-        const onUserMessage = (payload: OutboundMessagePayload & { isNew: boolean }) => {
-          if (!isMounted) return;
-          if (payload.leadId === selectedLeadIdRef.current) {
-            setMessages(prev => [...prev, {
-              id: payload.id,
-              leadId: payload.leadId,
-              sessionId: payload.sessionId,
-              sender: payload.sender,
-              message: payload.message,
-              timestamp: payload.timestamp,
-              clientMessageId: payload.clientMessageId,
-            }]);
-          }
-          if (payload.isNew) {
-            setActiveLeads(prev => prev.map(lead =>
-              lead.leadId === payload.leadId
-                ? { ...lead, unreadCount: lead.unreadCount + 1, lastMessage: payload.message, lastMessageAt: payload.timestamp }
-                : lead
-            ));
-          }
-        };
-
-        const onUserTyping = ({ leadId, isTyping }: { leadId: string; isTyping: boolean }) => {
-          if (!isMounted) return;
-          setTypingUsers(prev => {
-            const next = new Map(prev);
-            next.set(leadId, isTyping);
-            return next;
-          });
-        };
-
-        const onLeadTaken = ({ leadId }: { leadId: string }) => {
-          if (!isMounted) return;
-          setActiveLeads(prev => prev.map(lead =>
-            lead.leadId === leadId
-              ? { ...lead, isHumanActive: true }
-              : lead
-          ));
-        };
-
-        const onLeadReleased = ({ leadId }: { leadId: string }) => {
-          if (!isMounted) return;
-          setActiveLeads(prev => prev.map(lead =>
-            lead.leadId === leadId
-              ? { ...lead, isHumanActive: false }
-              : lead
-          ));
-        };
-
-        socket.on("connect", onConnect);
-        socket.on("disconnect", onDisconnect);
-        socket.on("users_update", onUsersUpdate);
-        socket.on("new_lead", onNewLead);
-        socket.on("user_message", onUserMessage);
-        socket.on("user_typing", onUserTyping);
-        socket.on("lead_taken", onLeadTaken);
-        socket.on("lead_released", onLeadReleased);
-
-        if (socket.connected) {
-          onConnect();
-        }
-
-        return () => {
-          socket.off("connect", onConnect);
-          socket.off("disconnect", onDisconnect);
-          socket.off("users_update", onUsersUpdate);
-          socket.off("new_lead", onNewLead);
-          socket.off("user_message", onUserMessage);
-          socket.off("user_typing", onUserTyping);
-          socket.off("lead_taken", onLeadTaken);
-          socket.off("lead_released", onLeadReleased);
-        };
-      } catch (err) {
-        console.error("Failed to initialize admin socket:", err);
+    pollLeads();
+    pollIntervalRef.current = setInterval(() => {
+      pollLeads();
+      if (selectedLeadIdRef.current) {
+        pollMessages();
       }
-      return undefined;
-    })().then((dispose) => {
-      if (!dispose) {
-        return;
-      }
-
-      if (!isMounted) {
-        dispose();
-      } else {
-        cleanupRef.current = dispose;
-      }
-    });
+    }, 5000);
 
     return () => {
-      isMounted = false;
-      cleanupRef.current?.();
-      cleanupRef.current = null;
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
     };
-  }, [adminId, adminName]);
+  }, [adminId, pollLeads, pollMessages]);
 
   const selectLead = useCallback((leadId: string) => {
     setSelectedLeadId(leadId);
     setMessages([]);
-    markAsRead(leadId);
     setActiveLeads(prev => prev.map(l =>
       l.leadId === leadId ? { ...l, unreadCount: 0 } : l
     ));
+    // Fetch messages immediately
+    fetch(`/api/admin/chat/${leadId}?limit=40`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("adminToken")}` },
+      cache: "no-store",
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.messages) {
+          setMessages(data.messages.map((m: any) => ({
+            id: m.id || m._id,
+            leadId: m.leadId,
+            sessionId: m.sessionId,
+            sender: m.sender,
+            message: m.message || m.text,
+            timestamp: m.timestamp,
+          })));
+        }
+      });
   }, []);
 
   const sendMessage = useCallback(async (message: string) => {
     if (!selectedLeadId || !message.trim()) return;
-    const payload: SendMessagePayload = {
-      leadId: selectedLeadId,
-      sessionId: selectedLeadId,
-      sender: "agent",
-      message: message.trim(),
-    };
-    await sendChatMessage(payload);
-    setMessages(prev => [...prev, {
+    
+    const tempMessage: ChatMessage = {
       id: `pending-${Date.now()}`,
       leadId: selectedLeadId,
       sessionId: selectedLeadId,
       sender: "agent",
       message: message.trim(),
       timestamp: new Date().toISOString(),
-    }]);
-  }, [selectedLeadId]);
+    };
+    
+    setMessages(prev => [...prev, tempMessage]);
+
+    try {
+      const res = await fetch(`/api/admin/chat/${selectedLeadId}/message`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
+        },
+        body: JSON.stringify({ message: message.trim() }),
+      });
+      
+      if (res.ok) {
+        pollMessages();
+      }
+    } catch (err) {
+      console.error("Failed to send message:", err);
+    }
+  }, [selectedLeadId, pollMessages]);
 
   const takeOver = useCallback(async (adminName?: string) => {
     if (!selectedLeadId) return;
-    await takeOverChat({ leadId: selectedLeadId, adminId, adminName });
+    
+    try {
+      const res = await fetch(`/api/admin/chat/${selectedLeadId}/takeover`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
+        },
+        body: JSON.stringify({ adminId, adminName }),
+      });
+      
+      if (res.ok) {
+        setActiveLeads(prev => prev.map(lead =>
+          lead.leadId === selectedLeadId
+            ? { ...lead, isHumanActive: true }
+            : lead
+        ));
+      }
+    } catch (err) {
+      console.error("Failed to take over:", err);
+    }
   }, [selectedLeadId, adminId]);
 
   const releaseToAi = useCallback(async () => {
     if (!selectedLeadId) return;
-    await returnToAi(selectedLeadId);
+    
+    try {
+      const res = await fetch(`/api/admin/chat/${selectedLeadId}/release`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
+        },
+      });
+      
+      if (res.ok) {
+        setActiveLeads(prev => prev.map(lead =>
+          lead.leadId === selectedLeadId
+            ? { ...lead, isHumanActive: false }
+            : lead
+        ));
+      }
+    } catch (err) {
+      console.error("Failed to release to AI:", err);
+    }
   }, [selectedLeadId]);
 
   return {

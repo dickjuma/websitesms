@@ -18,7 +18,7 @@ export function Logo({ className = "", size = "md" }: LogoProps) {
   const config = sizeConfig[size];
 
   return (
-    <Link href="/" className={`group flex items-center gap-3 transition-all hover:scale-[1.01] ${className}`}>
+    <Link href="/site" className={`group flex items-center gap-3 transition-all hover:scale-[1.01] ${className}`}>
       <Image
         src={logoImage}
         alt="SMA logo"

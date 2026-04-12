@@ -13,10 +13,14 @@ import {
 } from "@/lib/site-settings";
 
 export async function getDefaultAboutContent() {
+  const { db } = await connectToDatabase();
+
+  const about = await db.collection("about_page").findOne({});
+  if (about) return about;
+
   return {
     hero: {
-      eyebrow: "About SMA Technologies",
-      title: "We build technology that empowers businesses to grow.",
+      title: "About SMA Technologies",
       description:
         "Founded in Nairobi, SMA Technologies delivers end-to-end IT and software solutions for businesses that need secure, scalable, and practical systems.",
     },
@@ -58,21 +62,20 @@ export async function getDefaultAboutContent() {
       {
         title: "Local Expertise, Global Standards",
         description:
-          "Based in Nairobi, we balance local context with modern engineering practice.",
-      },
-      {
-        title: "End-to-End Delivery",
-        description:
-          "From discovery through launch and support, we stay accountable across the full project lifecycle.",
+          "We combine deep understanding of the Kenyan business landscape with world-class development practices.",
+        icon: "Globe",
       },
     ],
-    cta: {
-      title: "Ready to transform your business with technology?",
-      description:
-        "Let’s talk about your goals and how SMA can help you deliver them.",
-    },
-    updatedAt: new Date(),
   };
+}
+
+export async function getTeamMembers() {
+  const { db } = await connectToDatabase();
+  const team = await db.collection("team").find({}).sort({ order: 1, createdAt: -1 }).toArray();
+  return team.map((member: any) => ({
+    ...member,
+    id: String(member._id || ""),
+  }));
 }
 
 async function getAboutContent() {
@@ -114,7 +117,7 @@ export async function getAdminWorkspaceData() {
       .sort({ subscribedAt: -1 })
       .toArray(),
     db.collection("book_demo_requests").find({}).sort({ createdAt: -1 }).toArray(),
-    db.collection("team").find({}).sort({ order: 1, createdAt: -1 }).toArray(),
+    getTeamMembers(),
     db.collection("services").find({}).sort({ updatedAt: -1 }).toArray(),
     db.collection("seo_metadata").find({}).sort({ updatedAt: -1 }).toArray(),
     db.collection("chatbot_qa").find({}).sort({ order: 1, createdAt: -1 }).toArray(),

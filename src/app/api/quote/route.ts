@@ -33,7 +33,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Save to database
+    // Send confirmation email to user FIRST (don't fail if this errors)
+    console.log("=== Sending quote confirmation to user ===");
+    try {
+      const emailResult = await sendQuoteRequestConfirmation(email, name, projectType);
+      console.log("Quote confirmation email sent to:", email, "Result:", JSON.stringify(emailResult));
+    } catch (emailError) {
+      console.error("Failed to send quote confirmation email:", emailError);
+    }
+
+    // Send notification email to team
+    console.log("=== Sending quote notification to team ===");
+    try {
+      const teamResult = await sendQuoteRequestToTeam(
+        name,
+        email,
+        company,
+        projectType,
+        budget,
+        timeline,
+        message
+      );
+      console.log("Quote notification email sent for:", name, "Result:", JSON.stringify(teamResult));
+    } catch (emailError) {
+      console.error("Failed to send quote team notification email:", emailError);
+    }
+
+    // Save to database AFTER sending emails
     const quoteRequest = await saveQuoteRequest({
       name,
       email,
@@ -43,20 +69,6 @@ export async function POST(request: NextRequest) {
       timeline,
       message,
     });
-
-    // Send confirmation email to user
-    await sendQuoteRequestConfirmation(email, name, projectType);
-
-    // Send notification email to team
-    await sendQuoteRequestToTeam(
-      name,
-      email,
-      company,
-      projectType,
-      budget,
-      timeline,
-      message
-    );
 
     return NextResponse.json(
       {
