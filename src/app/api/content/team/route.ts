@@ -6,7 +6,11 @@ export async function GET() {
   try {
     const client = await connectMongoClientWithFallback();
     const db = client.db("sma_systems");
-    const team = await db.collection('team').find({}).sort({ order: 1 }).toArray();
+    const team = await db
+      .collection('team')
+      .find({ isActive: { $ne: false } })
+      .sort({ order: 1, createdAt: 1 })
+      .toArray();
     const formatted = team.map((m: any) => ({
       _id: String(m._id),
       name: m.name || "",

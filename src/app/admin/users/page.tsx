@@ -35,6 +35,7 @@ function getDeviceIcon(deviceType: string) {
   }
 }
 
+
 export default function UsersPage() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);

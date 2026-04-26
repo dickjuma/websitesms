@@ -46,6 +46,7 @@ function formatDate(value: string): string {
   return dateFormatter.format(new Date(value));
 }
 
+
 export default function LeadsPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);

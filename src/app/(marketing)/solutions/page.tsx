@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { SiteShell } from "@/components/layout/site-shell";
@@ -7,6 +9,16 @@ import {
   ServiceSection,
 } from "@/app/(marketing)/services/_components/service-primitives";
 import { solutionShowcases } from "./_content";
+
+export const metadata: Metadata = {
+  title: "Industry Solutions | Software for Your Sector | SMAS Systems",
+  description: "Industry-specific software solutions in Kenya. ERP, CRM, and custom software for retail, healthcare, finance, logistics, education, and more.",
+  keywords: ["industry solutions", "sector software", "ERP for retail", "healthcare software", "fintech solutions", "logistics software", "education technology"],
+  openGraph: {
+    title: "Industry Solutions | Software for Your Sector | SMAS Systems",
+    description: "Industry-specific software solutions tailored for Kenyan businesses.",
+  },
+};
 
 export default function SolutionsPage() {
   return (

@@ -3,6 +3,7 @@ import {
   getChatbotAdminConfig,
   getSiteInfoSettings,
 } from "@/lib/site-settings";
+import { servicePricingData } from "@/lib/site-data";
 
 function scoreTextMatch(query: string, text: string) {
   const terms = query
@@ -75,6 +76,31 @@ export async function getAiTrainingContext(query: string) {
         .join("\n"),
     );
 
+  const pricingTerms = query
+    .toLowerCase()
+    .split(/[^a-z0-9]+/i)
+    .filter((term) => term.length > 2);
+
+  const pricingContext = servicePricingData
+    .filter((item) => {
+      const haystack = `${item.service} ${item.description} ${item.customization}`.toLowerCase();
+      return pricingTerms.some((term) => haystack.includes(term));
+    })
+    .slice(0, 4)
+    .map((item) =>
+      [
+        `Pricing service: ${item.service}`,
+        `Description: ${item.description}`,
+        ...item.tiers.map(
+          (tier) =>
+            `${tier.name} starts at KSh ${tier.startingPrice}. ${tier.description}. Features: ${tier.features.join(", ")}`,
+        ),
+        item.customization ? `Customization notes: ${item.customization}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+
   return [
     "Admin AI configuration:",
     `System prompt guidance: ${aiConfig.systemPrompt}`,
@@ -93,6 +119,7 @@ export async function getAiTrainingContext(query: string) {
     `Phone: ${siteInfo.phone}`,
     `Address: ${siteInfo.address}`,
     matchedQa.length > 0 ? `Matched Q&A:\n${matchedQa.join("\n\n")}` : "",
+    pricingContext.length > 0 ? `Pricing context:\n${pricingContext.join("\n\n")}` : "",
     serviceContext.length > 0
       ? `Service catalog context:\n${serviceContext.join("\n\n")}`
       : "",

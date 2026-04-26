@@ -61,7 +61,7 @@ export function useNotifications(): UseNotificationsReturn {
     try {
       const notification = new Notification(options.title, {
         body: options.body,
-        icon: options.icon || "/favicon.ico",
+        icon: options.icon || "/logo.png",
         tag: options.tag,
         requireInteraction: options.requireInteraction,
       });

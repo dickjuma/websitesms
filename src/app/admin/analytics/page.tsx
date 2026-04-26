@@ -25,6 +25,7 @@ function ChartsSkeleton() {
   );
 }
 
+
 export default function AnalyticsPage() {
   const [mounted, setMounted] = useState(false);
   const [period, setPeriod] = useState<"7d" | "30d" | "90d">("7d");
@@ -44,18 +45,20 @@ export default function AnalyticsPage() {
     setLoading(true);
     try {
       const response = await fetch(`/api/admin/analytics?period=${period}`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
-        },
+        credentials: "include", // Include cookies for authentication
         cache: "no-store",
       });
 
       if (response.ok) {
         const json = (await response.json()) as { data: typeof data };
         setData(json.data);
+      } else {
+        console.error("Analytics API error:", response.status, response.statusText);
+        setData(null); // Clear data on error
       }
     } catch (error) {
       console.error("Failed to load analytics:", error);
+      setData(null); // Clear data on error
     } finally {
       setLoading(false);
     }
@@ -63,10 +66,10 @@ export default function AnalyticsPage() {
 
   const metrics = useMemo(
     () => [
-      { label: "Total Leads", value: data?.totalLeads ?? 0, icon: Users, change: "+12%", color: "text-blue-600" },
-      { label: "Hot Leads", value: data?.hotLeads ?? 0, icon: Zap, change: "+8%", color: "text-rose-600" },
-      { label: "Total Chats", value: data?.totalChats ?? 0, icon: MessageSquare, change: "+24%", color: "text-slate-600" },
-      { label: "Active Now", value: data?.activeChats ?? 0, icon: TrendingUp, change: "Live", color: "text-emerald-600" },
+      { label: "Total Leads", value: data?.totalLeads ?? 0, icon: Users, change: "+12%" },
+      { label: "Hot Leads", value: data?.hotLeads ?? 0, icon: Zap, change: "+8%" },
+      { label: "Total Chats", value: data?.totalChats ?? 0, icon: MessageSquare, change: "+24%" },
+      { label: "Active Now", value: data?.activeChats ?? 0, icon: TrendingUp, change: "Live" },
     ],
     [data]
   );
@@ -88,7 +91,7 @@ export default function AnalyticsPage() {
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-md">
         <div className="flex items-center justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
               <BarChart3 className="h-3 w-3" />
               Analytics
             </div>
@@ -130,7 +133,7 @@ export default function AnalyticsPage() {
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                   {metric.label}
                 </p>
-                <div className={`rounded-lg bg-slate-50 p-2 ${metric.color}`}>
+                <div className="rounded-lg bg-slate-100 p-2 text-slate-700">
                   <Icon className="h-4 w-4" />
                 </div>
               </div>

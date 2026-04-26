@@ -46,7 +46,12 @@ export interface ServerToClientEvents {
 // Client to Server Events
 export interface ClientToServerEvents {
   // User connection
-  join: (payload: { leadId: string; visitorId?: string; leadName?: string }) => void;
+  join: (payload: {
+    leadId: string;
+    sessionId?: string;
+    visitorId?: string;
+    leadName?: string;
+  }) => void;
   
   // Admin connection
   join_admin: (payload: { adminId: string; adminName: string; adminToken?: string }) => void;
@@ -92,6 +97,8 @@ export interface ActiveAdmin {
 export interface JoinRoomPayload {
   roomId: string;
   leadId?: string;
+  visitorId?: string;
+  leadName?: string;
 }
 
 export interface LeaveRoomPayload {

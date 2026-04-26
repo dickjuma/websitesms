@@ -39,6 +39,7 @@ function DemoStatusBadge({ status }: { status: string }) {
   );
 }
 
+
 export default function BookDemosPage() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);

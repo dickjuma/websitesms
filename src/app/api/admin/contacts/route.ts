@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ObjectId } from "mongodb";
 
 import { connectToDatabase } from "@/lib/database";
 import { requireAdminAuth } from "@/lib/admin-auth";
@@ -63,5 +64,65 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Failed to fetch contacts:", error);
     return NextResponse.json({ error: "Failed to fetch contacts" }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  const authError = requireAdminAuth(request);
+  if (authError) return authError;
+
+  try {
+    const body = (await request.json()) as { id?: string; status?: string };
+    if (!body.id || !body.status) {
+      return NextResponse.json(
+        { error: "id and status are required." },
+        { status: 400 },
+      );
+    }
+
+    const { db } = await connectToDatabase();
+    const collection = db.collection("contacts");
+    const contactId = ObjectId.isValid(body.id) ? new ObjectId(body.id) : null;
+
+    if (!contactId) {
+      return NextResponse.json({ error: "Invalid contact id." }, { status: 400 });
+    }
+
+    await collection.updateOne(
+      { _id: contactId },
+      { $set: { status: body.status } },
+    );
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Failed to update contact:", error);
+    return NextResponse.json({ error: "Failed to update contact." }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const authError = requireAdminAuth(request);
+  if (authError) return authError;
+
+  try {
+    const id = request.nextUrl.searchParams.get("id");
+    if (!id) {
+      return NextResponse.json({ error: "id is required." }, { status: 400 });
+    }
+
+    const { db } = await connectToDatabase();
+    const collection = db.collection("contacts");
+    const contactId = ObjectId.isValid(id) ? new ObjectId(id) : null;
+
+    if (!contactId) {
+      return NextResponse.json({ error: "Invalid contact id." }, { status: 400 });
+    }
+
+    await collection.deleteOne({ _id: contactId });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Failed to delete contact:", error);
+    return NextResponse.json({ error: "Failed to delete contact." }, { status: 500 });
   }
 }

@@ -15,6 +15,12 @@ interface AdminPreferences {
   key: "admin_preferences";
   timezone: string;
   language: string;
+  theme: "light" | "dark" | "system";
+  apiKeys: {
+    openai: string;
+    groq: string;
+    resend: string;
+  };
   notifications: {
     newLead: boolean;
     newMessage: boolean;
@@ -29,6 +35,12 @@ function getDefaultAdminPreferences(): AdminPreferences {
     key: "admin_preferences",
     timezone: "Africa/Nairobi",
     language: "en",
+    theme: "system",
+    apiKeys: {
+      openai: "",
+      groq: "",
+      resend: "",
+    },
     notifications: {
       newLead: true,
       newMessage: true,
@@ -53,6 +65,10 @@ async function getAdminPreferences() {
         ...getDefaultAdminPreferences().notifications,
         ...(current.notifications || {}),
       },
+      apiKeys: {
+        ...getDefaultAdminPreferences().apiKeys,
+        ...(current.apiKeys || {}),
+      },
     };
   }
 
@@ -64,24 +80,23 @@ async function getAdminPreferences() {
 async function saveAdminPreferences(data: Partial<AdminPreferences>) {
   const { db } = await connectToDatabase();
   const current = await getAdminPreferences();
-  const next: AdminPreferences = {
-    ...current,
-    ...data,
-    key: "admin_preferences",
-    notifications: {
-      ...current.notifications,
-      ...(data.notifications || {}),
-    },
+  
+  const updateFields: Record<string, unknown> = {
+    timezone: data.timezone ?? current.timezone,
+    language: data.language ?? current.language,
+    theme: data.theme ?? current.theme,
+    apiKeys: data.apiKeys ?? current.apiKeys,
+    notifications: data.notifications ?? current.notifications,
     updatedAt: new Date(),
   };
 
   await db.collection<AdminPreferences>("settings").updateOne(
     { key: "admin_preferences" },
-    { $set: next },
+    { $set: updateFields },
     { upsert: true },
   );
 
-  return next;
+  return { ...current, ...updateFields } as AdminPreferences;
 }
 
 export async function GET(request: NextRequest) {

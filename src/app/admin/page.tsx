@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
@@ -56,6 +56,8 @@ interface DashboardData {
     detail: string;
     timestamp: string;
     type: "lead" | "chat" | "contact" | "system";
+    leadId?: string;
+    isHumanActive?: boolean;
   }>;
   dailyLeads: Array<{ date: string; count: number }>;
   dailyChats: Array<{ date: string; count: number }>;
@@ -91,7 +93,7 @@ interface WorkspaceRecord {
   subject?: string;
   message?: string;
   company?: string;
-  serviceType?: string;
+  projectType?: string;
   createdAt?: string;
 }
 
@@ -162,6 +164,8 @@ function buildRecentActivity(
       "A visitor engaged with the chatbot.",
     timestamp: lead.lastActivityAt ?? lead.createdAt ?? new Date().toISOString(),
     type: "lead" as const,
+    leadId: lead.id,
+    isHumanActive: lead.isHumanActive,
   }));
 
   const contactActivity = (workspace.recentContacts ?? []).map((contact, index) => ({
@@ -181,7 +185,7 @@ function buildRecentActivity(
     id: quote._id ?? `quote-${index}`,
     action: "Quote request received",
     detail:
-      quote.serviceType?.trim() ||
+      quote.projectType?.trim() ||
       quote.company?.trim() ||
       quote.name?.trim() ||
       "A new quote request was submitted.",
@@ -253,17 +257,13 @@ export default function DashboardPage() {
     setLoading(true);
 
     try {
-      const headers = {
-        Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
-      };
-
       const [workspaceResponse, analyticsResponse] = await Promise.all([
         fetch("/api/admin?summary=true", {
-          headers,
+          credentials: "include", // Include cookies for authentication
           cache: "no-store",
         }),
         fetch("/api/admin/analytics?period=7d", {
-          headers,
+          credentials: "include", // Include cookies for authentication
           cache: "no-store",
         }),
       ]);
@@ -283,6 +283,28 @@ export default function DashboardPage() {
       setLoading(false);
     }
   };
+
+  const handleTakeOver = useCallback(async (leadId: string) => {
+    try {
+      const response = await fetch("/api/admin/takeover", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ leadId }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to take over chat");
+      }
+
+      // Refresh dashboard data
+      await loadDashboardData();
+    } catch (err) {
+      console.error("Failed to take over chat:", err);
+    }
+  }, []);
 
   const metrics = useMemo(
     () => [
@@ -413,7 +435,7 @@ export default function DashboardPage() {
             description="The latest movement across leads, quote requests, demos, and contact submissions."
             contentClassName="p-0"
           >
-            <RecentActivity activity={data.recentActivity} />
+            <RecentActivity activity={data.recentActivity} onTakeOver={handleTakeOver} />
           </AdminPanel>
         )}
       </section>

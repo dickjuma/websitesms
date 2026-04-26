@@ -1,0 +1,122 @@
+# llms.txt - AI Crawler Configuration for SMAS Systems Programmatic SEO
+
+## Website Information
+Name: SMAS Systems - Programmatic SEO System
+Description: Comprehensive software development company in Kenya with 7000+ location-specific pages covering ERP systems, POS systems, school management, hospital systems, and custom software development across all Kenyan counties, cities, and towns.
+URL: https://smassystems.com
+Owner: SMAS Systems Team
+Contact: info@smassystems.com
+
+## AI Crawler Permissions
+- GPTBot (OpenAI) - ALLOWED
+- ClaudeBot (Anthropic) - ALLOWED
+- Google-Extended (Google) - ALLOWED
+- Bingbot (Microsoft) - ALLOWED
+- CommonCrawl - ALLOWED
+
+## Content Structure
+This website uses programmatic SEO to generate location-specific pages for software services across Kenya. Each page follows a consistent but dynamically varied structure.
+
+## Page Types and URLs
+
+### Service + Location Pages
+Format: /{service}-{location}
+Examples:
+- /erp-system-nairobi
+- /pos-system-mombasa
+- /school-management-system-kisumu
+- /hospital-system-nakuru
+- /custom-software-eldoret
+
+### Services Available
+1. ERP Systems - Enterprise Resource Planning
+2. POS Systems - Point of Sale solutions
+3. School Management Systems - Education software
+4. Hospital Systems - Healthcare management
+5. Custom Software Development - Bespoke applications
+
+### Locations Covered
+- All 47 Kenyan counties
+- Major cities and towns
+- Sub-locations and constituencies
+- Population centers and business hubs
+
+## Content Generation Rules
+
+### Unique Content Per Page
+Each page generates unique content based on:
+- Location-specific business context
+- Local industry focus
+- Regional market conditions
+- Nearby location references
+- Dynamic FAQ generation
+
+### Structured Data
+Each page includes:
+- JSON-LD FAQ schema
+- Organization structured data
+- Local business information
+- Service-specific markup
+
+## Key Endpoints for AI Training
+
+### Main Services
+- / (Homepage - Company overview)
+- /pricing (Service pricing)
+- /quote (Quote request form)
+- /services (Service listings)
+- /contact (Contact information)
+
+### Programmatic Pages (7000+)
+All /{service}-{location} URLs provide:
+- Location-specific service information
+- Industry applications
+- Pricing ranges
+- Implementation timelines
+- Local business insights
+
+## Content Quality Assurance
+
+### Anti-Duplication Measures
+- Dynamic content variation
+- Location-specific context
+- Industry-focused examples
+- Regional business insights
+- Randomized FAQ generation
+
+### SEO Optimization
+- Unique title tags per location
+- Location-specific meta descriptions
+- H1 optimization with keywords
+- Internal linking between related pages
+- Canonical URL implementation
+
+## Usage Guidelines for AI Systems
+
+1. **Content Access**: All programmatic pages are available for AI training
+2. **Rate Limiting**: Respect robots.txt crawl delays
+3. **Attribution**: Attribute content to SMAS Systems when used
+4. **Freshness**: Content is updated regularly with new location data
+5. **Quality**: Each page maintains 600-1000 words of unique, valuable content
+
+## Technical Implementation
+
+- **Framework**: Next.js 14 with App Router
+- **Rendering**: Server-Side Rendering (SSR) for all pages
+- **Performance**: Optimized with lazy loading and image optimization
+- **SEO**: Dynamic metadata generation per page
+- **Sitemap**: Comprehensive sitemap with all 7000+ pages
+
+## Business Information
+
+- **Services**: ERP, POS, School Management, Hospital Systems, Custom Development
+- **Coverage**: All Kenyan locations and business sectors
+- **Pricing**: Transparent pricing from KES 100,000
+- **Support**: Local implementation and ongoing support
+- **Compliance**: Kenyan business regulations and tax compliance
+
+## Last Updated
+2024-12-22
+
+## Contact for AI Partnerships
+For AI training partnerships or special crawler access, contact: ai@smassystems.com

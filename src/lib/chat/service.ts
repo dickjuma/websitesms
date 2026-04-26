@@ -23,7 +23,6 @@ import { ChatSessionModel } from "@/models/ChatSession";
 import { LeadModel } from "@/models/Lead";
 import { MessageModel } from "@/models/Message";
 import { VisitorModel } from "@/models/Visitor";
-import { sendNewLeadNotificationToTeam, sendNewChatMessageNotificationToTeam } from "@/lib/email";
 
 function emitChatMessageIgnore(_payload: any) {}
 function emitAgentJoinIgnore(_payload: any) {}
@@ -38,7 +37,336 @@ try {
 } catch {}
 
 const FALLBACK_REPLY =
-  "Thanks for reaching out. I can help with project scope, pricing direction, or getting a human specialist into the conversation.";
+  "I'm here to help with your project questions. Would you like to know about our services, get pricing guidance, or speak with a specialist?";
+const HUMAN_HANDOFF_REPLY =
+  "I'm going to connect you with a human support agent for better assistance.";
+
+interface UserIntent {
+  type: "support_request" | "sales_inquiry" | "complaint" | "general_info";
+  confidence: number;
+  priority: "low" | "medium" | "high";
+}
+
+function detectUserIntent(message: string, conversation: MessageDto[]): UserIntent {
+  const normalized = message.trim().toLowerCase();
+
+  // Support request patterns
+  const supportPatterns = [
+    /\bhelp\b/i,
+    /\bsupport\b/i,
+    /\bissue\b/i,
+    /\bproblem\b/i,
+    /\berror\b/i,
+    /\bnot working\b/i,
+    /\bdoesn't work\b/i,
+    /\bbroken\b/i,
+    /\bfix\b/i,
+    /\btroubleshoot\b/i,
+  ];
+
+  // Sales inquiry patterns
+  const salesPatterns = [
+    /\bpricing\b/i,
+    /\bcost\b/i,
+    /\bquote\b/i,
+    /\bbuy\b/i,
+    /\bpurchase\b/i,
+    /\bplan\b/i,
+    /\bpackage\b/i,
+    /\bfeatures\b/i,
+    /\bdemo\b/i,
+    /\btrial\b/i,
+  ];
+
+  // Complaint patterns
+  const complaintPatterns = [
+    /\bangry\b/i,
+    /\bfrustrated\b/i,
+    /\bterrible\b/i,
+    /\bworst\b/i,
+    /\bunacceptable\b/i,
+    /\buseless\b/i,
+    /\bhorrible\b/i,
+    /\bdisappointed\b/i,
+    /\bcomplaint\b/i,
+  ];
+
+  const supportMatches = supportPatterns.filter(pattern => pattern.test(normalized)).length;
+  const salesMatches = salesPatterns.filter(pattern => pattern.test(normalized)).length;
+  const complaintMatches = complaintPatterns.filter(pattern => pattern.test(normalized)).length;
+
+  // Determine intent based on pattern matches
+  if (complaintMatches > 0) {
+    return { type: "complaint", confidence: 0.8, priority: "high" };
+  } else if (salesMatches > supportMatches) {
+    return { type: "sales_inquiry", confidence: 0.7, priority: "medium" };
+  } else if (supportMatches > 0) {
+    return { type: "support_request", confidence: 0.6, priority: "medium" };
+  } else {
+    return { type: "general_info", confidence: 0.4, priority: "low" };
+  }
+}
+
+interface EscalationResult {
+  shouldEscalate: boolean;
+  reason: string;
+  priority: "low" | "medium" | "high";
+}
+
+function shouldEscalateToHumanSupportEnhanced(
+  message: string,
+  conversation: MessageDto[],
+  intent: UserIntent,
+): EscalationResult | null {
+  const normalized = message.trim().toLowerCase();
+
+  if (!normalized) {
+    return null;
+  }
+
+  // Explicit human request patterns (highest priority)
+  const explicitHumanRequestPatterns = [
+    /\btalk to (a )?human\b/i,
+    /\bhuman support\b/i,
+    /\bhuman agent\b/i,
+    /\blive agent\b/i,
+    /\bsupport agent\b/i,
+    /\bconnect me to (a )?human\b/i,
+    /\bi need (a )?human\b/i,
+    /\bspeak to (a )?person\b/i,
+    /\breal person\b/i,
+  ];
+
+  // Sensitive/complex issue patterns
+  const sensitiveIssuePatterns = [
+    /\bbilling\b/i,
+    /\bpayment\b/i,
+    /\bcharged\b/i,
+    /\bcharge\b/i,
+    /\brefund\b/i,
+    /\binvoice\b/i,
+    /\blegal\b/i,
+    /\bcomplaint\b/i,
+    /\bcomplain\b/i,
+    /\baccount\b/i,
+    /\blogin\b/i,
+    /\bsecurity\b/i,
+    /\bprivacy\b/i,
+  ];
+
+  // Technical failure patterns
+  const technicalFailurePatterns = [
+    /\bnot working\b/i,
+    /\bdoesn't work\b/i,
+    /\bdoes not work\b/i,
+    /\btechnical failure\b/i,
+    /\berror\b/i,
+    /\bbroken\b/i,
+    /\bbug\b/i,
+    /\bissue\b/i,
+    /\bproblem\b/i,
+    /\bfailed\b/i,
+    /\bcan't access\b/i,
+    /\bcannot access\b/i,
+    /\bdown\b/i,
+    /\bcrash\b/i,
+  ];
+
+  // Frustrated tone patterns
+  const frustratedTonePatterns = [
+    /\bangry\b/i,
+    /\bfrustrated\b/i,
+    /\bupset\b/i,
+    /\bterrible\b/i,
+    /\bunacceptable\b/i,
+    /\buseless\b/i,
+    /\bworst\b/i,
+    /\bannoyed\b/i,
+    /\bthis is ridiculous\b/i,
+    /\bunbelievable\b/i,
+    /\babsurd\b/i,
+  ];
+
+  // Complex request patterns (require deeper understanding)
+  const complexRequestPatterns = [
+    /\bcustom\b/i,
+    /\bintegration\b/i,
+    /\bapi\b/i,
+    /\bdevelopment\b/i,
+    /\benterprise\b/i,
+    /\bcontract\b/i,
+    /\bnegotiation\b/i,
+    /\bsla\b/i,
+    /\bcompliance\b/i,
+  ];
+
+  // Repeated failure patterns
+  const repeatedFailurePatterns = [
+    /\bstill\b/i,
+    /\bagain\b/i,
+    /\bnot helping\b/i,
+    /\bdidn't help\b/i,
+    /\bdid not help\b/i,
+    /\byou already\b/i,
+    /\bi already said\b/i,
+    /\brepeated\b/i,
+    /\bsame issue\b/i,
+    /\bthird time\b/i,
+    /\bmultiple times\b/i,
+  ];
+
+  // Check for explicit human requests (highest priority)
+  if (explicitHumanRequestPatterns.some((pattern) => pattern.test(normalized))) {
+    return { shouldEscalate: true, reason: "explicit_human_request", priority: "high" };
+  }
+
+  // Check for sensitive issues
+  if (sensitiveIssuePatterns.some((pattern) => pattern.test(normalized))) {
+    return { shouldEscalate: true, reason: "sensitive_issue", priority: "high" };
+  }
+
+  // Check for frustrated tone
+  if (frustratedTonePatterns.some((pattern) => pattern.test(normalized))) {
+    return { shouldEscalate: true, reason: "frustrated_tone", priority: intent.priority === "high" ? "high" : "medium" };
+  }
+
+  // Check for complex requests
+  if (complexRequestPatterns.some((pattern) => pattern.test(normalized))) {
+    return { shouldEscalate: true, reason: "complex_request", priority: "medium" };
+  }
+
+  // Check for technical failures
+  if (technicalFailurePatterns.some((pattern) => pattern.test(normalized))) {
+    return { shouldEscalate: true, reason: "technical_failure", priority: "medium" };
+  }
+
+  // Check for repeated failures in conversation history
+  const assistantReplies = conversation.filter((item) => item.sender !== "user");
+  if (
+    assistantReplies.length >= 2 &&
+    repeatedFailurePatterns.some((pattern) => pattern.test(normalized))
+  ) {
+    return { shouldEscalate: true, reason: "repeated_failure", priority: "medium" };
+  }
+
+  // Low confidence AI responses might indicate need for human intervention
+  // This would be determined by the AI model's confidence score
+  // For now, we'll use conversation length as a proxy
+  if (conversation.length > 15 && intent.confidence < 0.5) {
+    return { shouldEscalate: true, reason: "low_ai_confidence", priority: "low" };
+  }
+
+  return null;
+}
+
+function getEscalationMessage(reason: string, intent: UserIntent): string {
+  const baseMessage = "I'm connecting you with a human support agent who can better assist you.";
+
+  switch (reason) {
+    case "explicit_human_request":
+      return "I'll connect you with a human support agent right away.";
+    case "sensitive_issue":
+      return "For this type of inquiry, I'll connect you with a specialized support agent.";
+    case "frustrated_tone":
+      return "I understand you're frustrated. Let me connect you with a human agent who can help resolve this.";
+    case "complex_request":
+      return "This appears to be a complex request. I'll connect you with a specialist who can provide detailed assistance.";
+    case "technical_failure":
+      return "I'm experiencing difficulty with this technical issue. Let me connect you with our technical support team.";
+    case "repeated_failure":
+      return "I apologize for not being able to resolve this yet. Let me bring in a human agent to assist you.";
+    case "low_ai_confidence":
+      return "To ensure you get the most accurate help, I'll connect you with a human support specialist.";
+    default:
+      return baseMessage;
+  }
+}
+
+async function generateAgentSuggestions(
+  userMessage: string,
+  conversation: MessageDto[],
+  lead: LeadDto
+): Promise<string[]> {
+  const recentMessages = conversation.slice(-6); // Last 6 messages for context
+
+  const prompt = `As an AI assistant, generate 2-3 helpful reply suggestions for a human agent responding to this customer message.
+
+Customer message: "${userMessage}"
+
+Conversation context:
+${recentMessages.map(msg => `${msg.sender}: ${msg.message}`).join('\n')}
+
+Lead info: ${lead.name || 'Unknown'}, ${lead.businessNeed || 'No specific need mentioned'}, ${lead.qualification} lead
+
+Provide concise, professional suggestions that address the customer's concern directly.`;
+
+  try {
+    const Groq = (await import("groq-sdk")).default;
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.1-8b-instant",
+      temperature: 0.7,
+      max_tokens: 300,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const suggestions = completion.choices[0]?.message?.content?.trim();
+    if (!suggestions) return [];
+
+    // Parse suggestions - assuming they're separated by newlines or numbers
+    return suggestions
+      .split('\n')
+      .filter(line => line.trim().length > 10)
+      .slice(0, 3)
+      .map(suggestion => suggestion.replace(/^\d+\.\s*/, '').trim());
+  } catch (error) {
+    console.error("Failed to generate agent suggestions:", error);
+    return [
+      "Thank you for your message. I'm here to help resolve this issue.",
+      "I understand your concern. Let me assist you with this.",
+      "I'd be happy to help you with that. Can you provide more details?"
+    ];
+  }
+}
+
+async function updateConversationTags(leadId: string, sessionId: string, intent: UserIntent) {
+  try {
+    await ChatSessionModel.updateOne(
+      { sessionId } as any,
+      {
+        $set: {
+          intent: intent.type,
+          priority: intent.priority,
+          confidence: intent.confidence,
+          lastActivityAt: new Date(),
+        },
+      },
+    );
+
+    await LeadModel.updateOne(
+      { _id: assertLeadId(leadId) },
+      {
+        $set: {
+          lastActivityAt: new Date(),
+        },
+        $inc: {
+          [`intentCounts.${intent.type}`]: 1,
+        },
+      },
+    );
+  } catch (error) {
+    console.error("Failed to update conversation tags:", error);
+  }
+}
+
+function shouldEscalateToHumanSupport(
+  message: string,
+  conversation: MessageDto[],
+) {
+  const result = shouldEscalateToHumanSupportEnhanced(message, conversation, detectUserIntent(message, conversation));
+  return result ? result.reason : null;
+}
 
 function calculateLeadScore(
   qualification: LeadQualification,
@@ -567,15 +895,7 @@ export async function getOrCreateLead(params: {
       ],
     });
 
-    sendNewLeadNotificationToTeam({
-      name: mergedLeadInput.name || "",
-      email: mergedLeadInput.email || "",
-      phone: mergedLeadInput.phone || "",
-      businessNeed: mergedLeadInput.businessNeed || "",
-      qualification: params.seedMessage
-        ? classifyLead(params.seedMessage)
-        : normalizeQualification(mergedLeadInput.qualification) || "COLD",
-    });
+    // Chat lead notifications disabled - leads saved to dashboard instead
   } else {
     await attachLeadInput(lead, mergedLeadInput);
 
@@ -835,7 +1155,9 @@ export async function getLeadMessages(
     .limit(limit)
     .lean();
 
-  return messages.map((message: any) => serializeMessage(message));
+  return messages
+    .map((message: any) => serializeMessage(message))
+    .reverse();
 }
 
 async function refreshLeadAndSessionSummary(leadId: string, sessionId: string) {
@@ -1108,6 +1430,7 @@ export async function processUserMessage(params: {
   message?: string;
   clientMessageId?: string;
   visitorId?: string;
+  language?: string;
 }): Promise<ChatbotResponseDto> {
   const lead = await getOrCreateLead({
     leadId: params.leadId,
@@ -1153,12 +1476,6 @@ export async function processUserMessage(params: {
     clientMessageId: params.clientMessageId,
   });
 
-  sendNewChatMessageNotificationToTeam({
-    name: lead.name,
-    email: lead.email,
-    phone: lead.phone,
-  }, params.message);
-
   emitChatMessage(userMessage);
 
   await updateLeadActivity(
@@ -1176,6 +1493,7 @@ export async function processUserMessage(params: {
 
   const refreshedLead = serializeLead((await getLeadDocument(lead.id))!);
 
+  // If human agent is already active, don't respond with AI - generate suggestions instead
   if (refreshedLead.isHumanActive) {
     const snapshot = await getLeadChatSnapshot({
       leadId: lead.id,
@@ -1186,24 +1504,98 @@ export async function processUserMessage(params: {
       throw new Error("Failed to load chat snapshot.");
     }
 
+    // Generate helpful reply suggestions for the human agent
+    const recentConversation = await getLeadMessages(refreshedLead.id, 10, session.id);
+    const suggestions = await generateAgentSuggestions(params.message, recentConversation, refreshedLead);
+
     return {
       ...snapshot,
       reply: null,
       waitingForAgent: true,
+      agentSuggestions: suggestions,
     };
   }
 
-  const [recentConversation, knowledgeContext, trainingContext] =
+  const recentConversation = await getLeadMessages(refreshedLead.id, 20, session.id);
+
+  // Detect user intent and tag conversation
+  const intent = detectUserIntent(params.message, recentConversation);
+
+  // Detect if escalation is needed based on multiple criteria
+  const escalationNeeded = shouldEscalateToHumanSupportEnhanced(
+    params.message,
+    recentConversation,
+    intent
+  );
+
+  if (escalationNeeded) {
+    // Activate human takeover
     await Promise.all([
-      getLeadMessages(refreshedLead.id, 20, session.id),
-      getKnowledgeContextForQuery(params.message),
-      getAiTrainingContext(params.message),
+      LeadModel.updateOne(
+        { _id: assertLeadId(refreshedLead.id) },
+        {
+          $set: {
+            status: "contacted",
+            lastActivityAt: new Date(),
+          },
+        },
+      ),
+      updateLeadActivity(
+        {
+          leadId: refreshedLead.id,
+          visitorId: params.visitorId || refreshedLead.visitorId,
+          sessionId: session.id,
+        },
+        {
+          action: "human_handoff_requested",
+          detail: `Escalated to human support: ${escalationNeeded.reason}`,
+          metadata: {
+            trigger: escalationNeeded.reason,
+            intent: intent.type,
+            priority: escalationNeeded.priority
+          },
+        },
+      ),
     ]);
+
+    // Send polite escalation message
+    const escalationMessage = getEscalationMessage(escalationNeeded.reason, intent);
+    const botMessage = await saveMessage({
+      leadId: refreshedLead.id,
+      sessionId: session.id,
+      sender: "bot",
+      message: escalationMessage,
+    });
+
+    emitChatMessage(botMessage);
+
+    const snapshot = await getLeadChatSnapshot({
+      leadId: refreshedLead.id,
+      sessionId: session.id,
+    });
+
+    if (!snapshot.lead || !snapshot.session) {
+      throw new Error("Failed to load chat snapshot.");
+    }
+
+    return {
+      ...snapshot,
+      reply: botMessage,
+      waitingForAgent: false,
+    };
+  }
+
+  // Generate AI response for non-escalated queries
+  const [knowledgeContext, trainingContext] = await Promise.all([
+    getKnowledgeContextForQuery(params.message),
+    getAiTrainingContext(params.message),
+  ]);
 
   const replyText = await generateGroqReply(
     refreshedLead,
     recentConversation,
-    `${trainingContext}\n\nWebsite knowledge:\n${knowledgeContext}`,
+    `${trainingContext}\n\nWebsite knowledge:\n${knowledgeContext}\n\nUser intent: ${intent.type}`,
+    params.language || "en",
   ).catch((error) => {
     console.error("Groq reply generation failed:", error);
     return FALLBACK_REPLY;
@@ -1217,6 +1609,9 @@ export async function processUserMessage(params: {
   });
 
   emitChatMessage(botMessage);
+
+  // Update conversation tags
+  await updateConversationTags(refreshedLead.id, session.id, intent);
 
   const snapshot = await getLeadChatSnapshot({
     leadId: refreshedLead.id,

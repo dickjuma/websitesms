@@ -94,6 +94,8 @@ export async function POST(request: NextRequest) {
           data:
             resource === "newsletter"
               ? { unsubscribed: false }
+              : resource === "quotes"
+              ? { status: "contacted" }
               : { status: "responded" },
         });
       }

@@ -298,24 +298,6 @@ export async function saveNewsletterSubscriber(data: Omit<NewsletterSubscriber, 
   };
 }
 
-export async function saveQuoteRequest(data: Omit<QuoteRequest, "_id" | "createdAt" | "status">): Promise<QuoteRequest> {
-  const { db } = await connectToDatabase();
-  const collection = db.collection<QuoteRequest>("quote_requests");
-
-  const result = await collection.insertOne({
-    ...data,
-    createdAt: new Date(),
-    status: "new",
-  });
-
-  return {
-    _id: result.insertedId.toString(),
-    ...data,
-    createdAt: new Date(),
-    status: "new",
-  };
-}
-
 export async function saveBookDemoSubmission(data: Omit<BookDemoSubmission, "_id" | "createdAt" | "status">): Promise<BookDemoSubmission> {
   const { db } = await connectToDatabase();
   const collection = db.collection<BookDemoSubmission>("book_demo_requests");

@@ -114,7 +114,7 @@ export async function sendContactNotificationToTeam(
           <p><strong>Message:</strong></p>
           <p style="background: #f0f0f0; padding: 10px; border-radius: 5px;">${message}</p>
           <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;" />
-<p><a href="https://smassystems.com/admin">View in dashboard</a></p>
+<p><a href="${profile.websiteUrl}/admin">View in dashboard</a></p>
         </div>
       `,
     });
@@ -202,48 +202,56 @@ export async function sendQuoteRequestToTeam(
   projectType: string,
   budget: string | undefined,
   timeline: string | undefined,
-  message: string
+  message: string,
+  phone?: string,
+  plan?: string,
+  type?: string,
+  leadQuality?: 'hot' | 'warm' | 'cold'
 ) {
   try {
     const { resend, fromEmail } = getEmailClient();
     const profile = await getEmailProfile();
-console.log("Sending quote notification to:", profile.notificationsEmail, "from:", fromEmail);
-    
+    console.log("Sending quote notification to:", profile.notificationsEmail, "from:", fromEmail);
+
     const response = await resend.emails.send({
       from: fromEmail,
       to: profile.notificationsEmail,
       replyTo: email,
-      subject: `New Quote Request: ${projectType}`,
+      subject: `New Quote Request: ${projectType}${plan ? ` - ${plan}` : ''}${type ? ` (${type})` : ''}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2>New Quote Request</h2>
           <p><strong>Name:</strong> ${name}</p>
           <p><strong>Email:</strong> <a href="mailto:${email}">${email}</a></p>
+          ${phone ? `<p><strong>Phone:</strong> ${phone}</p>` : ""}
           ${company ? `<p><strong>Company:</strong> ${company}</p>` : ""}
           <p><strong>Project Type:</strong> ${projectType}</p>
+          ${plan ? `<p><strong>Plan:</strong> ${plan}</p>` : ""}
+          ${type ? `<p><strong>Type:</strong> ${type === 'subscription' ? 'Subscription' : 'One-time'}</p>` : ""}
           ${budget ? `<p><strong>Budget:</strong> ${budget}</p>` : ""}
           ${timeline ? `<p><strong>Timeline:</strong> ${timeline}</p>` : ""}
+          ${leadQuality ? `<p><strong>Lead Quality:</strong> <span style="color: ${leadQuality === 'hot' ? '#e11d48' : leadQuality === 'warm' ? '#d97706' : '#059669'}">${leadQuality.toUpperCase()}</span></p>` : ""}
           <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;" />
           <p><strong>Details:</strong></p>
           <p style="background: #f0f0f0; padding: 10px; border-radius: 5px;">${message}</p>
           <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;" />
-<p><a href="https://smassystems.com/admin">View in dashboard</a></p>
+          <p><a href="${profile.websiteUrl}/admin">View in dashboard</a></p>
         </div>
       `,
     });
 
     console.log("Quote notification response:", JSON.stringify(response));
-    
+
     if (response.error) {
       console.error("Resend error for quote notification:", response.error);
     }
-    
+
     return response;
-  } catch (error) {
-    console.error("Failed to send quote notification email:", error);
-    throw error;
-  }
-}
+   } catch (error) {
+     console.error("Failed to send quote team notification email:", error);
+     throw error;
+   }
+ }
 
 export async function sendBookDemoConfirmation(
   email: string,

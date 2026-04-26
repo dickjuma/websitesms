@@ -10,6 +10,7 @@ import {
   Save,
   Shield,
   Sparkles,
+  Upload,
 } from "lucide-react";
 
 import {
@@ -28,6 +29,31 @@ interface SiteSettingsState {
   address: string;
   websiteUrl: string;
   workingHours: string;
+  logoUrl: string;
+  stats: {
+    projectsDelivered: string;
+    clientSatisfaction: string;
+    yearsExperience: string;
+  };
+  partners: Partner[];
+  completedProjects: CompletedProject[];
+}
+
+interface Partner {
+  id: string;
+  name: string;
+  logoUrl: string;
+  website?: string;
+}
+
+interface CompletedProject {
+  id: string;
+  title: string;
+  client: string;
+  imageUrl: string;
+  description?: string;
+  services: string[];
+  completedDate: string;
 }
 
 interface AiConfigState {
@@ -41,6 +67,12 @@ interface AiConfigState {
 interface AdminPreferencesState {
   timezone: string;
   language: string;
+  theme: "light" | "dark" | "system";
+  apiKeys: {
+    openai: string;
+    groq: string;
+    resend: string;
+  };
   notifications: {
     newLead: boolean;
     newMessage: boolean;
@@ -54,10 +86,18 @@ const defaultSiteSettings: SiteSettingsState = {
   supportEmail: "support@smassystems.com",
   salesEmail: "sales@smassystems.com",
   notificationsEmail: "info@smassystems.com",
-  phone: "+254 719 832 719",
+  phone: "0719832719",
   address: "Nairobi, Kenya",
-  websiteUrl: "https://smassystems.com",
+  websiteUrl: "https://smasystems.co.ke",
   workingHours: "Mon-Fri: 9AM-6PM EAT",
+  logoUrl: "",
+  stats: {
+    projectsDelivered: "400+",
+    clientSatisfaction: "98%",
+    yearsExperience: "12+",
+  },
+  partners: [],
+  completedProjects: [],
 };
 
 const defaultAiConfig: AiConfigState = {
@@ -76,12 +116,19 @@ const defaultAiConfig: AiConfigState = {
 const defaultPreferences: AdminPreferencesState = {
   timezone: "Africa/Nairobi",
   language: "en",
+  theme: "system",
+  apiKeys: {
+    openai: "",
+    groq: "",
+    resend: "",
+  },
   notifications: {
     newLead: true,
     newMessage: true,
     chatTakeover: true,
   },
 };
+
 
 export default function SettingsPage() {
   const [mounted, setMounted] = useState(false);
@@ -139,6 +186,10 @@ export default function SettingsPage() {
         notifications: {
           ...current.notifications,
           ...(data.adminPreferences?.notifications || {}),
+        },
+        apiKeys: {
+          ...current.apiKeys,
+          ...(data.adminPreferences?.apiKeys || {}),
         },
       }));
     } catch (error) {
@@ -422,6 +473,278 @@ export default function SettingsPage() {
                   className="mt-1 block w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-400"
                 />
               </label>
+              <label className="block sm:col-span-2">
+                <span className="text-sm font-medium text-slate-700">Logo</span>
+                <div className="mt-2 flex items-center gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp"
+                        onChange={async (event) => {
+                          const file = event.target.files?.[0];
+                          if (!file) return;
+                          
+                          const formData = new FormData();
+                          formData.append("logo", file);
+                          
+                          try {
+                            const response = await fetch("/api/admin/upload-logo", {
+                              method: "POST",
+                              headers: {
+                                Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
+                              },
+                              body: formData,
+                            });
+                            const data = await response.json();
+                            if (data.success) {
+                              setSiteSettings((current) => ({
+                                ...current,
+                                logoUrl: data.url,
+                              }));
+                              alert("Logo uploaded! Click 'Save settings' to apply changes.");
+                            } else {
+                              alert(data.message || "Upload failed");
+                            }
+                          } catch (error) {
+                            console.error("Upload error:", error);
+                            alert("Failed to upload logo");
+                          }
+                        }}
+                        className="hidden"
+                        id="logo-upload"
+                      />
+                      <label
+                        htmlFor="logo-upload"
+                        className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-blue-400 hover:text-blue-700"
+                      >
+                        Upload Logo
+                      </label>
+                    </div>
+                  </div>
+                  {siteSettings.logoUrl && (
+                    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                      <img
+                        src={siteSettings.logoUrl}
+                        alt="Logo preview"
+                        className="h-full w-full object-contain"
+                      />
+                    </div>
+                  )}
+                </div>
+                <input
+                  type="url"
+                  value={siteSettings.logoUrl}
+                  onChange={(event) =>
+                    setSiteSettings((current) => ({
+                      ...current,
+                      logoUrl: event.target.value,
+                    }))
+                  }
+                  placeholder="Or paste logo URL here..."
+                  className="mt-3 block w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-400"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Favicon</span>
+                <div className="mt-2 flex items-center gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <input
+                        type="file"
+                        accept="image/png,image/x-icon,image/vnd.microsoft.icon"
+                        onChange={async (event) => {
+                          const file = event.target.files?.[0];
+                          if (!file) return;
+                          
+                          const formData = new FormData();
+                          formData.append("logo", file);
+                          
+                          try {
+                            const response = await fetch("/api/admin/upload-logo", {
+                              method: "POST",
+                              headers: {
+                                Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
+                              },
+                              body: formData,
+                            });
+                            const data = await response.json();
+                            if (data.success) {
+                              setSiteSettings((current) => ({
+                                ...current,
+                                logoUrl: data.url,
+                              }));
+                            }
+                          } catch (error) {
+                            console.error("Upload error:", error);
+                          }
+                        }}
+                        className="hidden"
+                        id="logo-upload"
+                      />
+                      <label
+                        htmlFor="logo-upload"
+                        className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-blue-400 hover:text-blue-700"
+                      >
+                        Upload Logo
+                      </label>
+                    </div>
+                  </div>
+                  {siteSettings.logoUrl && (
+                    <div className="h-10 w-10 shrink-0 overflow-hidden rounded border border-slate-200 bg-white">
+                      <img
+                        src={siteSettings.logoUrl}
+                        alt="Logo preview"
+                        className="h-full w-full object-contain"
+                      />
+                    </div>
+                  )}
+                </div>
+              </label>
+            </div>
+          </AdminPanel>
+
+          {/* Partners Management */}
+          <AdminPanel
+            title="Partners"
+            description="Manage partner logos displayed on the site."
+          >
+            <div className="space-y-4">
+{siteSettings.partners.map((partner, index) => (
+                <div key={partner.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  {partner.logoUrl ? (
+                    <img src={partner.logoUrl} alt={partner.name} className="h-10 w-10 rounded object-contain" />
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded bg-slate-200 text-xs">No img</div>
+                  )}
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      value={partner.name}
+                      onChange={(e) => {
+                        const newPartners = [...siteSettings.partners];
+                        newPartners[index].name = e.target.value;
+                        setSiteSettings((s) => ({ ...s, partners: newPartners }));
+                      }}
+                      placeholder="Partner name"
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm mb-2"
+                    />
+                    <input
+                      type="text"
+                      value={partner.logoUrl}
+                      onChange={(e) => {
+                        const newPartners = [...siteSettings.partners];
+                        newPartners[index].logoUrl = e.target.value;
+                        setSiteSettings((s) => ({ ...s, partners: newPartners }));
+                      }}
+                      placeholder="Logo URL"
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newPartners = siteSettings.partners.filter((_, i) => i !== index);
+                      setSiteSettings((s) => ({ ...s, partners: newPartners }));
+                    }}
+                    className="rounded-lg p-2 text-red-500 hover:bg-red-50"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  const newPartner: Partner = { id: `partner-${Date.now()}`, name: "", logoUrl: "" };
+                  setSiteSettings((s) => ({ ...s, partners: [...s.partners, newPartner] }));
+                }}
+                className="text-sm font-medium text-blue-600 hover:text-blue-700"
+              >
+                + Add Partner
+              </button>
+            </div>
+          </AdminPanel>
+
+          {/* Completed Projects Management */}
+          <AdminPanel
+            title="Completed Projects"
+            description="Manage completed projects displayed on the site."
+          >
+            <div className="space-y-4">
+              {siteSettings.completedProjects.map((project, index) => (
+                <div key={project.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex gap-3">
+                    {project.imageUrl ? (
+                      <img src={project.imageUrl} alt={project.title} className="h-16 w-24 rounded object-cover" />
+                    ) : (
+                      <div className="flex h-16 w-24 items-center justify-center rounded bg-slate-200 text-xs">No img</div>
+                    )}
+                    <div className="flex-1 space-y-2">
+                      <input
+                        type="text"
+                        value={project.title}
+                        onChange={(e) => {
+                          const newProjects = [...siteSettings.completedProjects];
+                          newProjects[index].title = e.target.value;
+                          setSiteSettings((s) => ({ ...s, completedProjects: newProjects }));
+                        }}
+                        placeholder="Project title"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                      />
+                      <input
+                        type="text"
+                        value={project.client}
+                        onChange={(e) => {
+                          const newProjects = [...siteSettings.completedProjects];
+                          newProjects[index].client = e.target.value;
+                          setSiteSettings((s) => ({ ...s, completedProjects: newProjects }));
+                        }}
+                        placeholder="Client name"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                      />
+                      <input
+                        type="text"
+                        value={project.imageUrl}
+                        onChange={(e) => {
+                          const newProjects = [...siteSettings.completedProjects];
+                          newProjects[index].imageUrl = e.target.value;
+                          setSiteSettings((s) => ({ ...s, completedProjects: newProjects }));
+                        }}
+                        placeholder="Image URL"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newProjects = siteSettings.completedProjects.filter((_, i) => i !== index);
+                        setSiteSettings((s) => ({ ...s, completedProjects: newProjects }));
+                      }}
+                      className="rounded-lg p-2 text-red-500 hover:bg-red-50"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  const newProject: CompletedProject = { 
+                    id: `project-${Date.now()}`, 
+                    title: "", 
+                    client: "", 
+                    imageUrl: "", 
+                    services: [], 
+                    completedDate: new Date().toISOString().split("T")[0] 
+                  };
+                  setSiteSettings((s) => ({ ...s, completedProjects: [...s.completedProjects, newProject] }));
+                }}
+                className="text-sm font-medium text-blue-600 hover:text-blue-700"
+              >
+                + Add Completed Project
+              </button>
             </div>
           </AdminPanel>
 
@@ -545,6 +868,87 @@ export default function SettingsPage() {
                   <option value="en">English</option>
                   <option value="sw">Swahili</option>
                 </select>
+              </label>
+              <div>
+                <span className="text-sm font-medium text-slate-700">Theme</span>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {(["light", "dark", "system"] as const).map((theme) => (
+                    <button
+                      key={theme}
+                      type="button"
+                      onClick={() =>
+                        setPreferences((current) => ({
+                          ...current,
+                          theme,
+                        }))
+                      }
+                      className={`rounded-2xl border px-4 py-2 text-sm font-semibold transition ${
+                        preferences.theme === theme
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                      }`}
+                    >
+                      {theme === "light"
+                        ? "Light"
+                        : theme === "dark"
+                          ? "Dark"
+                          : "System"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </AdminPanel>
+
+          <AdminPanel
+            title="API keys"
+            description="Store provider keys used for chat, email, and automation services."
+          >
+            <div className="space-y-4">
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">OpenAI</span>
+                <input
+                  type="password"
+                  value={preferences.apiKeys.openai}
+                  onChange={(event) =>
+                    setPreferences((current) => ({
+                      ...current,
+                      apiKeys: { ...current.apiKeys, openai: event.target.value },
+                    }))
+                  }
+                  placeholder="sk-..."
+                  className="mt-1 block w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-400"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Groq</span>
+                <input
+                  type="password"
+                  value={preferences.apiKeys.groq}
+                  onChange={(event) =>
+                    setPreferences((current) => ({
+                      ...current,
+                      apiKeys: { ...current.apiKeys, groq: event.target.value },
+                    }))
+                  }
+                  placeholder="gsk_..."
+                  className="mt-1 block w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-400"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Resend</span>
+                <input
+                  type="password"
+                  value={preferences.apiKeys.resend}
+                  onChange={(event) =>
+                    setPreferences((current) => ({
+                      ...current,
+                      apiKeys: { ...current.apiKeys, resend: event.target.value },
+                    }))
+                  }
+                  placeholder="re_..."
+                  className="mt-1 block w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-400"
+                />
               </label>
             </div>
           </AdminPanel>

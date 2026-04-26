@@ -1,7 +1,7 @@
-import { createHmac, timingSafeEqual } from "crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { createHmac, timingSafeEqual } from 'crypto';
+import { NextRequest, NextResponse } from 'next/server';
 
-const ADMIN_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const ADMIN_TOKEN_TTL_MS = 1000 * 60 * 60 * 24;
 
 export interface AdminSession {
   adminId: string;
@@ -11,37 +11,41 @@ export interface AdminSession {
   expiresAt: number;
 }
 
-function getAdminTokenSecret() {
-  return (
-    process.env.ADMIN_TOKEN_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    process.env.MONGODB_URI ||
-    "local-admin-token-secret"
-  );
+function getAdminTokenSecret(): string {
+  const secret = process.env.ADMIN_TOKEN_SECRET;
+  if (!secret) {
+    console.warn('ADMIN_TOKEN_SECRET not set - using dev fallback');
+    return 'DEV_SECRET_DO_NOT_USE_IN_PRODUCTION';
+  }
+  return secret;
 }
 
-function encodeBase64Url(value: string) {
-  return Buffer.from(value, "utf8").toString("base64url");
+export function validateRequiredEnvVars() {
+  getAdminTokenSecret();
 }
 
-function decodeBase64Url(value: string) {
+function encodeBase64Url(value: string): string {
+  return Buffer.from(value, 'utf8').toString('base64url');
+}
+
+function decodeBase64Url(value: string): string | null {
   try {
-    return Buffer.from(value, "base64url").toString("utf8");
+    return Buffer.from(value, 'base64url').toString('utf8');
   } catch {
     return null;
   }
 }
 
-function signTokenPayload(encodedPayload: string) {
-  return createHmac("sha256", getAdminTokenSecret())
+function signTokenPayload(encodedPayload: string): string {
+  return createHmac('sha256', getAdminTokenSecret())
     .update(encodedPayload)
-    .digest("base64url");
+    .digest('base64url');
 }
 
-function getAuthorizationToken(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
+function getAuthorizationToken(request: NextRequest): string | null {
+  const authHeader = request.headers.get('authorization');
 
-  if (!authHeader?.startsWith("Bearer ")) {
+  if (!authHeader?.startsWith('Bearer ')) {
     return null;
   }
 
@@ -50,8 +54,8 @@ function getAuthorizationToken(request: NextRequest) {
 
 export function createAdminToken(
   admin: { adminId: string; email: string; name?: string },
-  ttlMs = ADMIN_TOKEN_TTL_MS,
-) {
+  ttlMs: number = ADMIN_TOKEN_TTL_MS,
+): string {
   const issuedAt = Date.now();
   const expiresAt = issuedAt + ttlMs;
 
@@ -69,7 +73,7 @@ export function createAdminToken(
 }
 
 export function verifyAdminToken(token: string): AdminSession | null {
-  const [encodedPayload, providedSignature] = token.split(".");
+  const [encodedPayload, providedSignature] = token.split('.');
 
   if (!encodedPayload || !providedSignature) {
     return null;
@@ -96,10 +100,10 @@ export function verifyAdminToken(token: string): AdminSession | null {
     const payload = JSON.parse(decodedPayload) as Partial<AdminSession>;
 
     if (
-      typeof payload.adminId !== "string" ||
-      typeof payload.email !== "string" ||
-      typeof payload.issuedAt !== "number" ||
-      typeof payload.expiresAt !== "number"
+      typeof payload.adminId !== 'string' ||
+      typeof payload.email !== 'string' ||
+      typeof payload.issuedAt !== 'number' ||
+      typeof payload.expiresAt !== 'number'
     ) {
       return null;
     }
@@ -120,7 +124,7 @@ export function verifyAdminToken(token: string): AdminSession | null {
   }
 }
 
-export function getAdminSession(request: NextRequest) {
+export function getAdminSession(request: NextRequest): AdminSession | null {
   const token = getAuthorizationToken(request);
 
   if (!token) {
@@ -130,11 +134,25 @@ export function getAdminSession(request: NextRequest) {
   return verifyAdminToken(token);
 }
 
-export function requireAdminAuth(request: NextRequest) {
+export function requireAdminAuth(request: NextRequest): NextResponse<{ error: string }> | null {
+  // First try new cookie-based authentication
+  const token = request.cookies.get('admin_token')?.value;
+  if (token) {
+    try {
+      const decoded = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+      if (decoded.exp > Date.now() / 1000) {
+        return null; // Valid cookie auth
+      }
+    } catch {
+      // Invalid token, continue to header check
+    }
+  }
+
+  // Fall back to old header-based authentication
   const session = getAdminSession(request);
 
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   return null;

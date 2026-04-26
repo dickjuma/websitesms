@@ -92,6 +92,35 @@ function getStaticKnowledgeSeed(): KnowledgeSnippet[] {
   return [...routes, ...pricing];
 }
 
+function isPricingQuery(query: string) {
+  return /\b(price|prices|pricing|cost|costs|quote|rates|packages?|budget|how much)\b/i.test(
+    query,
+  );
+}
+
+function buildMergedKnowledgeSources(storedPages: any[]) {
+  const merged = new Map<string, KnowledgeSnippet>();
+
+  for (const page of storedPages) {
+    merged.set(`stored:${page.route}`, {
+      route: page.route,
+      title: page.title,
+      summary: page.summary,
+      content: page.content,
+      sourceType: page.sourceType,
+    });
+  }
+
+  for (const seed of getStaticKnowledgeSeed()) {
+    const key = `seed:${seed.route}:${seed.title}`;
+    if (!merged.has(key)) {
+      merged.set(key, seed);
+    }
+  }
+
+  return Array.from(merged.values());
+}
+
 function getDefaultRoutes() {
   const routeSet = new Set<string>([
     "/",
@@ -193,16 +222,7 @@ export async function getKnowledgeContextForQuery(query: string) {
     .limit(80)
     .lean();
 
-  const sources: KnowledgeSnippet[] =
-    storedPages.length > 0
-      ? storedPages.map((page) => ({
-          route: page.route,
-          title: page.title,
-          summary: page.summary,
-          content: page.content,
-          sourceType: page.sourceType,
-        }))
-      : getStaticKnowledgeSeed();
+  const sources: KnowledgeSnippet[] = buildMergedKnowledgeSources(storedPages);
 
   const queryTerms = query
     .toLowerCase()
@@ -232,11 +252,33 @@ export async function getKnowledgeContextForQuery(query: string) {
     );
 
   if (scored.length > 0) {
-    return scored.join("\n\n");
+    const pricingSupplements = isPricingQuery(query)
+      ? getStaticKnowledgeSeed()
+          .filter((item) => item.route.startsWith("/pricing#"))
+          .filter((item) => {
+            const haystack = `${item.title} ${item.summary} ${item.content}`.toLowerCase();
+            const terms = query
+              .toLowerCase()
+              .split(/[^a-z0-9]+/i)
+              .filter((term) => term.length > 2);
+
+            return (
+              terms.some((term) => haystack.includes(term)) ||
+              /\bservices?\b/i.test(query)
+            );
+          })
+          .slice(0, 6)
+          .map(
+            (source) =>
+              `Route: ${source.route}\nTitle: ${source.title}\nSummary: ${source.summary}\nContent: ${source.content.slice(0, 900)}`,
+          )
+      : [];
+
+    return [...scored, ...pricingSupplements].slice(0, 8).join("\n\n");
   }
 
   return getStaticKnowledgeSeed()
-    .slice(0, 4)
+    .slice(0, isPricingQuery(query) ? 8 : 4)
     .map(
       (source) =>
         `Route: ${source.route}\nTitle: ${source.title}\nSummary: ${source.summary}`,

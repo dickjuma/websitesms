@@ -77,4 +77,5 @@ export interface ChatbotResponseDto {
   messages: MessageDto[];
   reply: MessageDto | null;
   waitingForAgent: boolean;
+  agentSuggestions?: string[];
 }

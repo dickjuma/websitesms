@@ -12,6 +12,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
+
 export default function AdminLogin() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30" />}>
@@ -35,23 +36,41 @@ function AdminLoginContent() {
     setError('');
 
     try {
+      // Get CSRF token from cookie (set by previous request or refresh)
+      const csrfToken = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('csrf_token='))
+        ?.split('=')[1];
+
       const res = await fetch('/api/admin/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(csrfToken && { 'X-CSRF-Token': csrfToken })
+        },
         body: JSON.stringify({ email, password }),
+        credentials: 'include' // Include cookies in request
       });
 
       const data = await res.json();
 
       if (data.success) {
-        localStorage.setItem('adminToken', data.token);
-        localStorage.setItem('adminEmail', data.admin.email);
-        localStorage.setItem('adminId', data.admin.id);
-        router.push(searchParams?.get('next') || '/admin');
+        // Clear any localStorage data from old system
+        localStorage.removeItem('adminToken');
+        localStorage.removeItem('adminEmail');
+        localStorage.removeItem('adminId');
+
+        // Set flag to prevent auth guard redirect
+        sessionStorage.setItem('justLoggedIn', 'true');
+
+        // Redirect to dashboard or original destination
+        router.push(searchParams?.get('redirect') || '/admin/dashboard');
+        router.refresh(); // Force a refresh to update any auth-dependent components
       } else {
         setError(data.message || 'Login failed');
       }
-    } catch {
+    } catch (error) {
+      console.error('Login error:', error);
       setError('An error occurred. Please try again.');
     } finally {
       setLoading(false);

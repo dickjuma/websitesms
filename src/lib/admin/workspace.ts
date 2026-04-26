@@ -181,19 +181,19 @@ export async function getAdminWorkspaceSummary() {
       .sort({ createdAt: -1 })
       .limit(4)
       .toArray(),
-    db
-      .collection("quote_requests")
-      .find(
-        {},
-        {
-          projection: {
-            name: 1,
-            company: 1,
-            serviceType: 1,
-            createdAt: 1,
-          },
-        },
-      )
+     db
+       .collection("quote_requests")
+       .find(
+         {},
+         {
+           projection: {
+             name: 1,
+             company: 1,
+             projectType: 1,
+             createdAt: 1,
+           },
+         },
+       )
       .sort({ createdAt: -1 })
       .limit(2)
       .toArray(),

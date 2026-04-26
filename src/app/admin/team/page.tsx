@@ -37,6 +37,7 @@ function TableSkeleton() {
   );
 }
 
+
 export default function TeamPage() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -138,6 +139,7 @@ export default function TeamPage() {
           department: member.department,
           linkedin: member.linkedin,
           photoUrl: member.photoUrl,
+          isActive: member.status === "active",
         }),
       });
 
@@ -212,7 +214,7 @@ export default function TeamPage() {
               email: m.email,
               role: m.role as any,
               status: (m.status as "active" | "inactive") || "active",
-              photoUrl: m.image,
+              photoUrl: m.photoUrl || m.image,
               bio: m.bio,
               department: m.department,
               linkedin: m.linkedin,

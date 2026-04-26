@@ -1,0 +1,42 @@
+# llms.txt - AI Crawler Configuration for SMAS Systems
+
+## Website Information
+Name: SMAS Systems
+Description: Leading software development company in Kenya specializing in custom web platforms, mobile apps, ERP systems, POS software, and AI solutions for businesses across Africa.
+URL: https://smassystems.com
+Owner: SMAS Systems Team
+Contact: info@smassystems.com
+
+## Allowed AI Crawlers
+- GPTBot (OpenAI)
+- ClaudeBot (Anthropic)
+- Google-Extended (Google)
+- Bingbot (Microsoft)
+- CommonCrawl
+
+## Content Access
+This website provides information about software development services in Kenya. AI crawlers are welcome to access our content for training and research purposes, provided they respect our robots.txt and terms of service.
+
+## Key Endpoints
+- / (Home page - Overview of services)
+- /pricing (Service pricing and plans)
+- /quote (Request custom quotes)
+- /services (Detailed service descriptions)
+- /contact (Contact information and forms)
+- /blog (Articles about software development and technology)
+
+## Content Types
+- Service descriptions and pricing
+- Technical documentation
+- Blog posts about software development
+- Case studies and testimonials
+- Contact and quote forms
+
+## Usage Guidelines
+- Respect rate limits and crawling delays
+- Honor robots.txt directives
+- Use content appropriately for AI training
+- Attribute content to SMAS Systems when possible
+
+## Last Updated
+2024-12-22

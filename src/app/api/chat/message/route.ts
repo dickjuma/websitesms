@@ -4,7 +4,7 @@ import { processUserMessage } from "@/lib/chat/service";
 
 export async function POST(request: NextRequest) {
   try {
-    const { leadId, sessionId, message, lead, clientMessageId, visitorId } =
+    const { leadId, sessionId, message, lead, clientMessageId, visitorId, language } =
       await request.json();
 
     if (!message?.trim()) {
@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
       leadInput: lead,
       clientMessageId,
       visitorId,
+      language,
     });
 
     return NextResponse.json(payload);

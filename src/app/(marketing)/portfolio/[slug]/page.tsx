@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
@@ -16,8 +18,34 @@ type PortfolioDetailPageProps = {
   params: Promise<{ slug: string }>;
 };
 
-export async function generateStaticParams() {
-  return portfolioProjects.map((project) => ({ slug: project.slug }));
+export async function generateMetadata({ params }: PortfolioDetailPageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const project = getPortfolioProject(slug);
+  
+  if (!project) {
+    return {
+      title: "Project Not Found | SMAS Systems Portfolio",
+      description: "The requested project could not be found.",
+    };
+  }
+
+  return {
+    title: `${project.title} | SMAS Systems Portfolio`,
+    description: project.summary,
+    keywords: project.services,
+    openGraph: {
+      title: `${project.title} | SMAS Systems Portfolio`,
+      description: project.summary,
+      type: "article",
+      images: [{ url: 'https://smassystems.com/og-image.png', width: 1200, height: 630, alt: project.title }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${project.title} | SMAS Systems Portfolio`,
+      description: project.summary,
+      images: ['https://smassystems.com/og-image.png'],
+    },
+};
 }
 
 export default async function PortfolioDetailPage({

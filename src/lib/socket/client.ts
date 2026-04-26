@@ -7,35 +7,34 @@ export interface RealtimeSocketClient {
   off(event: string, listener: (...args: any[]) => void): void;
 }
 
-// Stub - no more socket.io
-export const getSocketClient = async (): Promise<RealtimeSocketClient | null> => null;
+export const getSocketClient = async (): Promise<RealtimeSocketClient | null> => {
+  return null;
+};
+
 export const ensureSocketBootstrap = async () => {};
 
-// Stub exports for use-admin-socket
-export const joinAsAdmin = async (params: { adminId: string; adminName: string }) => {
-  console.log("Socket stub: joinAsAdmin", params);
-};
+export const joinAsAdmin = async () => {};
+export const sendChatMessage = async () => {};
+export const joinChatRoom = async () => {};
+export const leaveChatRoom = async () => {};
+export const sendTyping = async () => {};
+export const takeOverChat = async () => {};
+export const returnToAi = async () => {};
+export const markAsRead = (leadId: string) => {};
 
-export const sendChatMessage = async (payload: any) => {
-  console.log("Socket stub: sendChatMessage", payload);
-};
+export interface OutboundMessagePayload {
+  roomId: string;
+  message: string;
+  leadId: string;
+}
 
-export const takeOverChat = async (params: { leadId: string; adminId: string; adminName?: string }) => {
-  console.log("Socket stub: takeOverChat", params);
-};
+export interface TypingPayload {
+  roomId: string;
+  leadId: string;
+  isTyping: boolean;
+}
 
-export const returnToAi = async (leadId: string) => {
-  console.log("Socket stub: returnToAi", leadId);
-};
-
-export const markAsRead = (leadId: string) => {
-  console.log("Socket stub: markAsRead", leadId);
-};
-
-export interface ActiveUser {
-  visitorId: string;
+export interface ActiveAdmin {
+  id: string;
   name: string;
-  unreadCount: number;
-  joinedAt: string;
-  socketId: string;
 }

@@ -1,4 +1,5 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -17,39 +18,13 @@ import {
   Heart,
   Target,
   TrendingUp,
+  User,
 } from "lucide-react";
 import { SiteShell } from "@/components/layout/site-shell";
-
-interface AboutData {
-  hero: {
-    eyebrow: string;
-    title: string;
-    description: string;
-  };
-  stats: { value: string; label: string; icon: string }[];
-  mission: string;
-  vision: string;
-  values: { title: string; description: string; icon: string }[];
-  services: { title: string; description: string }[];
-  whyChooseUs: { title: string; description: string }[];
-  cta: { title: string; description: string };
-}
-
-interface TeamMember {
-  _id: string;
-  name: string;
-  role: string;
-  bio: string;
-  image: string;
-  department: string;
-}
-
-const iconMap: Record<string, any> = {
-  Code, Heart, Clock, Award, Shield, Zap, Users, Rocket, Target, TrendingUp
-};
+import type { TeamMember, AboutPage } from "@/lib/content";
 
 export default function AboutPage() {
-  const [data, setData] = useState<AboutData | null>(null);
+  const [data, setData] = useState<AboutPage | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -62,13 +37,9 @@ export default function AboutPage() {
         ]);
         const aboutData = await aboutRes.json();
         const teamData = await teamRes.json();
-        
-        if (aboutData.success) {
-          setData(aboutData.data);
-        }
-        if (teamData.success) {
-          setTeam(teamData.data);
-        }
+
+        if (aboutData.success) setData(aboutData.data);
+        if (teamData.success) setTeam(teamData.data);
       } catch (error) {
         console.error('Failed to fetch about data:', error);
       } finally {
@@ -81,8 +52,8 @@ export default function AboutPage() {
   if (loading) {
     return (
       <SiteShell>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700"></div>
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
         </div>
       </SiteShell>
     );
@@ -131,6 +102,13 @@ export default function AboutPage() {
     description: "Let's talk about your goals and how we can help you achieve them."
   };
 
+  const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
+    Code,
+    Heart,
+    Clock,
+    Award,
+  };
+
   const teamByDepartment = team.reduce((acc: Record<string, TeamMember[]>, member) => {
     const dept = member.department || "Other";
     if (!acc[dept]) acc[dept] = [];
@@ -140,222 +118,254 @@ export default function AboutPage() {
 
   return (
     <SiteShell>
-      {/* Hero Section */}
-      <section className="relative overflow-hidden bg-white py-20 lg:py-28">
-        <div className="absolute inset-0 -z-10 bg-gradient-to-br from-slate-50 via-white to-blue-50/30" />
-        <div className="mx-auto max-w-7xl px-6 lg:px-8">
-          <div className="max-w-3xl">
-            <p className="text-sm font-semibold uppercase tracking-wider text-blue-700">{hero.eyebrow}</p>
-            <h1 className="mt-4 text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
-              {hero.title.split(' ').slice(0, -2).join(' ')} <span className="text-blue-700">{hero.title.split(' ').slice(-2).join(' ')}</span>
-            </h1>
-            <p className="mt-6 text-lg leading-8 text-slate-600">
-              {hero.description}
-            </p>
-            <div className="mt-10 flex flex-wrap gap-4">
-              <Link
-                href="/contact"
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-6 py-3 text-base font-semibold text-white shadow-md transition hover:bg-blue-800"
+      <main className="bg-white">
+        {/* Hero Section - flat, clean */}
+        <section
+          aria-labelledby="about-hero-title"
+          className="border-b border-slate-200 bg-white py-16 md:py-20"
+        >
+          <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8">
+            <div className="max-w-3xl">
+              <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
+                {hero.eyebrow}
+              </p>
+              <h1
+                id="about-hero-title"
+                className="mt-4 text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl"
               >
-                Work With Us <ArrowRight className="h-5 w-5" />
-              </Link>
-              <Link
-                href="#values"
-                className="inline-flex items-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-base font-semibold text-slate-700 transition hover:border-blue-400 hover:bg-blue-50"
-              >
-                Learn More
-              </Link>
+                {hero.title.split(' ').slice(0, -2).join(' ')}{' '}
+                <span className="text-blue-700">{hero.title.split(' ').slice(-2).join(' ')}</span>
+              </h1>
+              <p className="mt-6 text-base leading-relaxed text-slate-600 md:text-lg">
+                {hero.description}
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link
+                  href="/contact"
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+                >
+                  Work With Us <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+                <Link
+                  href="#values"
+                  className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-blue-300 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  Learn More
+                </Link>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Stats Section */}
-      <section className="border-y border-slate-200 bg-white py-12">
-        <div className="mx-auto max-w-7xl px-6 lg:px-8">
-          <div className="grid grid-cols-2 gap-8 text-center sm:grid-cols-4">
-            {stats.map((stat) => {
-              const IconComponent = iconMap[stat.icon] || Code;
-              return (
-                <div key={stat.label} className="space-y-2">
-                  <div className="flex justify-center">
-                    <IconComponent className="h-8 w-8 text-blue-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-slate-900">{stat.value}</p>
-                  <p className="text-sm font-medium text-slate-600">{stat.label}</p>
-                </div>
-              );
-            })}
+        {/* Stats Section - semantic list */}
+        <section
+          aria-labelledby="stats-heading"
+          className="border-y border-slate-200 bg-white py-10"
+        >
+          <h2 id="stats-heading" className="sr-only">Company statistics</h2>
+          <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8">
+            <ul className="grid grid-cols-2 gap-6 text-center sm:grid-cols-4">
+              {stats.map((stat) => {
+                const IconComponent = iconMap[stat.icon] || Code;
+                return (
+                  <li key={stat.label} className="space-y-2">
+                    <IconComponent className="mx-auto h-6 w-6 text-blue-600" aria-hidden="true" />
+                    <p className="text-2xl font-bold text-slate-900 md:text-3xl">{stat.value}</p>
+                    <p className="text-xs font-medium text-slate-600 md:text-sm">{stat.label}</p>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Mission & Vision */}
-      <section className="py-20">
-        <div className="mx-auto max-w-7xl px-6 lg:px-8">
-          <div className="grid gap-12 lg:grid-cols-2">
-            <div className="rounded-2xl bg-blue-50 p-8 shadow-sm">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
-                <Target className="h-6 w-6" />
+        {/* Mission & Vision */}
+        <section className="py-16 md:py-20">
+          <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8">
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="mb-3 inline-flex rounded-lg bg-blue-100 p-2 text-blue-700">
+                  <Target className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-950 md:text-2xl">Our Mission</h2>
+                <p className="mt-3 text-sm leading-relaxed text-slate-600 md:text-base">{mission}</p>
               </div>
-              <h2 className="text-2xl font-bold text-slate-950">Our Mission</h2>
-              <p className="mt-4 text-slate-700 leading-relaxed">{mission}</p>
+              <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="mb-3 inline-flex rounded-lg bg-slate-100 p-2 text-slate-700">
+                  <TrendingUp className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-950 md:text-2xl">Our Vision</h2>
+                <p className="mt-3 text-sm leading-relaxed text-slate-600 md:text-base">{vision}</p>
+              </div>
             </div>
-            <div className="rounded-2xl bg-slate-50 p-8 shadow-sm">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-slate-200 text-slate-700">
-                <TrendingUp className="h-6 w-6" />
-              </div>
-              <h2 className="text-2xl font-bold text-slate-950">Our Vision</h2>
-              <p className="mt-4 text-slate-700 leading-relaxed">{vision}</p>
+          </div>
+        </section>
+
+        {/* Core Values */}
+        <section id="values" className="border-t border-slate-200 bg-slate-50 py-16 md:py-20">
+          <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8">
+            <div className="mx-auto max-w-2xl text-center">
+              <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">What We Believe</p>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Our Core Values</h2>
+              <p className="mt-3 text-sm text-slate-600 md:text-base">
+                These principles guide every decision we make and every solution we build.
+              </p>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Core Values */}
-      <section id="values" className="bg-slate-50 py-20">
-        <div className="mx-auto max-w-7xl px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <p className="text-sm font-semibold uppercase tracking-wider text-blue-700">What We Believe</p>
-            <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">Our Core Values</h2>
-            <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto">
-              These principles guide every decision we make and every solution we build.
-            </p>
-          </div>
-          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
-            {values.map((value) => {
-              const IconComponent = iconMap[value.icon] || Shield;
-              return (
-                <div key={value.title} className="rounded-2xl bg-white p-6 shadow-sm border border-slate-200 hover:shadow-md transition">
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
-                    <IconComponent className="h-6 w-6" />
-                  </div>
-                  <h3 className="text-xl font-bold text-slate-950">{value.title}</h3>
-                  <p className="mt-3 text-slate-600 leading-relaxed">{value.description}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* Services Overview */}
-      <section className="py-20">
-        <div className="mx-auto max-w-7xl px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <p className="text-sm font-semibold uppercase tracking-wider text-blue-700">What We Do</p>
-            <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-              Comprehensive IT & Software Services
-            </h2>
-            <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto">
-              We offer a full spectrum of technology services to help your business thrive.
-            </p>
-          </div>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {services.map((service) => (
-              <div key={service.title} className="flex gap-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <CheckCircle className="h-5 w-5 shrink-0 text-blue-600 mt-0.5" />
-                <div>
-                  <h3 className="font-semibold text-slate-900">{service.title}</h3>
-                  <p className="text-sm text-slate-600">{service.description}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Team Section */}
-      <section className="bg-white py-20">
-        <div className="mx-auto max-w-7xl px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <p className="text-sm font-semibold uppercase tracking-wider text-blue-700">The People Behind It</p>
-            <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">Meet Our Team</h2>
-            <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto">
-              A dedicated group of professionals passionate about technology and your success.
-            </p>
-          </div>
-
-          {team.length > 0 ? (
-            Object.entries(teamByDepartment).map(([deptName, members]) => (
-              <div key={deptName} className="mb-16 last:mb-0">
-                <h3 className="text-2xl font-bold text-slate-800 mb-8 pb-2 border-b border-blue-200 inline-block">
-                  {deptName}
-                </h3>
-                <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-                  {members.map((member) => (
-                    <div
-                      key={member._id}
-                      className="group rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm transition-all hover:shadow-md hover:border-blue-300"
-                    >
-                      <div className="relative mx-auto mb-4 h-28 w-28 overflow-hidden rounded-full">
-                        <Image
-                          src={member.image || "/images/Devprofile.png"}
-                          alt={member.name}
-                          fill
-                          className="object-cover"
-                          sizes="(max-width: 768px) 112px, 112px"
-                        />
+            <ul className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+              {values.map((value) => {
+                const IconComponent = iconMap[value.icon] || Shield;
+                return (
+                  <li key={value.title}>
+                    <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
+                      <div className="mb-3 inline-flex rounded-lg bg-blue-100 p-2 text-blue-700">
+                        <IconComponent className="h-5 w-5" aria-hidden="true" />
                       </div>
-                      <h3 className="text-lg font-bold text-slate-950">{member.name}</h3>
-                      <p className="text-sm font-medium text-blue-700">{member.role}</p>
-                      <p className="mt-3 text-sm text-slate-600">{member.bio}</p>
+                      <h3 className="text-base font-bold text-slate-950">{value.title}</h3>
+                      <p className="mt-2 text-sm leading-relaxed text-slate-600">{value.description}</p>
+                    </article>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </section>
+
+        {/* Services Overview */}
+        <section className="py-16 md:py-20">
+          <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8">
+            <div className="mx-auto max-w-2xl text-center">
+              <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">What We Do</p>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">
+                Comprehensive IT & Software Services
+              </h2>
+              <p className="mt-3 text-sm text-slate-600 md:text-base">
+                We offer a full spectrum of technology services to help your business thrive.
+              </p>
+            </div>
+            <ul className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {services.map((service) => (
+                <li key={service.title}>
+                  <div className="flex gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                    <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" aria-hidden="true" />
+                    <div>
+                      <h3 className="font-semibold text-slate-900">{service.title}</h3>
+                      <p className="text-sm text-slate-600">{service.description}</p>
                     </div>
-                  ))}
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="text-center py-12 text-slate-500">
-              <p>No team members added yet. Add team members in the admin panel.</p>
-            </div>
-          )}
-        </div>
-      </section>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
 
-      {/* Why Choose Us */}
-      <section className="bg-gradient-to-br from-slate-50 to-white py-20">
-        <div className="mx-auto max-w-7xl px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <p className="text-sm font-semibold uppercase tracking-wider text-blue-700">Why Choose SMA</p>
-            <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-              A Partner You Can Trust
-            </h2>
-          </div>
-          <div className="grid gap-8 lg:grid-cols-3">
-            {whyChooseUs.map((item) => (
-              <div key={item.title} className="rounded-2xl bg-white p-6 shadow-sm border border-slate-200">
-                <h3 className="text-xl font-bold text-slate-950 mb-2">{item.title}</h3>
-                <p className="text-slate-600">{item.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+        {/* Team Section */}
+        <section className="border-t border-slate-200 bg-white py-16 md:py-20">
+          <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8">
+            <div className="mx-auto max-w-2xl text-center">
+              <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">The People Behind It</p>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Meet Our Team</h2>
+              <p className="mt-3 text-sm text-slate-600 md:text-base">
+                A dedicated group of professionals passionate about technology and your success.
+              </p>
+            </div>
 
-      {/* Final CTA */}
-      <section className="py-20">
-        <div className="mx-auto max-w-4xl px-6 text-center">
-          <div className="rounded-3xl bg-blue-700 p-10 shadow-xl">
-            <h2 className="text-3xl font-bold text-white sm:text-4xl">{cta.title}</h2>
-            <p className="mt-4 text-lg text-blue-100">{cta.description}</p>
-            <div className="mt-8 flex flex-wrap justify-center gap-4">
-              <Link
-                href="/contact"
-                className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-base font-semibold text-blue-700 shadow-md transition hover:bg-slate-100"
-              >
-                Contact Us <ArrowRight className="h-5 w-5" />
-              </Link>
-              <Link
-                href="/pricing"
-                className="inline-flex items-center rounded-xl border border-white/30 bg-transparent px-6 py-3 text-base font-semibold text-white transition hover:bg-white/10"
-              >
-                View Our Pricing
-              </Link>
+            {team.length > 0 ? (
+              <div className="mt-12 space-y-12">
+                {Object.entries(teamByDepartment).map(([deptName, members]) => (
+                  <div key={deptName}>
+                    <h3 className="mb-6 inline-block border-b-2 border-blue-200 pb-1 text-xl font-bold text-slate-800">
+                      {deptName}
+                    </h3>
+                    <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                      {members.map((member) => (
+                        <li key={String(member._id)}>
+                          <article className="rounded-lg border border-slate-200 bg-white p-4 text-center shadow-sm transition hover:shadow-md">
+                             <div className="relative mx-auto mb-3 h-24 w-24 overflow-hidden rounded-full">
+                               {member.image ? (
+                                 member.image.startsWith('data:') ? (
+                                   <img
+                                     src={member.image}
+                                     alt={member.name}
+                                     className="h-full w-full object-cover"
+                                   />
+                                 ) : (
+                                   <Image
+                                     src={member.image}
+                                     alt={member.name}
+                                     fill
+                                     className="object-cover"
+                                     sizes="96px"
+                                   />
+                                 )
+                               ) : (
+                                 <div className="flex h-full w-full items-center justify-center bg-slate-100">
+                                   <User className="h-8 w-8 text-slate-400" />
+                                 </div>
+                               )}
+                             </div>
+                            <h4 className="text-base font-bold text-slate-950">{member.name}</h4>
+                            <p className="text-sm font-medium text-blue-700">{member.role}</p>
+                            <p className="mt-2 text-xs text-slate-600">{member.bio}</p>
+                          </article>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-12 rounded-lg border border-dashed border-slate-200 bg-slate-50 py-12 text-center">
+                <Users className="mx-auto mb-2 h-8 w-8 text-slate-400" aria-hidden="true" />
+                <p className="text-sm text-slate-500">No team members added yet. Add team members in the admin panel.</p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Why Choose Us */}
+        <section className="border-t border-slate-200 bg-slate-50 py-16 md:py-20">
+          <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8">
+            <div className="mx-auto max-w-2xl text-center">
+              <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">Why Choose SMA</p>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">A Partner You Can Trust</h2>
+            </div>
+            <ul className="mt-10 grid gap-5 md:grid-cols-3">
+              {whyChooseUs.map((item) => (
+                <li key={item.title}>
+                  <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                    <h3 className="text-lg font-bold text-slate-950">{item.title}</h3>
+                    <p className="mt-2 text-sm text-slate-600">{item.description}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        {/* Final CTA - flat, solid */}
+        <section className="py-16 md:py-20">
+          <div className="mx-auto max-w-4xl px-4 text-center">
+            <div className="rounded-xl bg-slate-900 p-8 shadow-md md:p-10">
+              <h2 className="text-2xl font-bold text-white md:text-3xl">{cta.title}</h2>
+              <p className="mt-3 text-sm text-slate-300 md:text-base">{cta.description}</p>
+              <div className="mt-6 flex flex-wrap justify-center gap-3">
+                <Link
+                  href="/contact"
+                  className="inline-flex items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-slate-900"
+                >
+                  Contact Us <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+                <Link
+                  href="/pricing"
+                  className="inline-flex items-center rounded-lg border border-white/30 bg-transparent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-slate-900"
+                >
+                  View Our Pricing
+                </Link>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
     </SiteShell>
   );
 }

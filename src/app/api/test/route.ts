@@ -115,6 +115,7 @@ export async function POST() {
         budget: "10000-50000",
         timeline: "3-6 months",
         message: "This is a test quote request",
+        timestamp: new Date().toISOString(),
       });
 
       testResults.tests.push({
@@ -222,6 +223,31 @@ export async function POST() {
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
+
+    console.log("Testing pricing services seeding...");
+    try {
+      // Import the seeding function
+      const { seedPredefinedServices } = await import('@/lib/pricing-seed');
+      await seedPredefinedServices();
+
+      // Check if services were created
+      const { getPricingServices } = await import('@/lib/database');
+      const services = await getPricingServices();
+
+      testResults.tests.push({
+        name: "Pricing Services Seeding",
+        status: services.length >= 8 ? "PASS" : "FAIL",
+        error: services.length >= 8 ? undefined : `Only ${services.length} services found, expected 8+`,
+      });
+    } catch (error) {
+      testResults.tests.push({
+        name: "Pricing Services Seeding",
+        status: "FAIL",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+
+
 
     const passCount = testResults.tests.filter((test) => test.status === "PASS").length;
     const failCount = testResults.tests.filter((test) => test.status === "FAIL").length;

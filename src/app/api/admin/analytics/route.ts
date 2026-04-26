@@ -21,13 +21,12 @@ export async function GET(request: NextRequest) {
 
     await connectToMongoose();
 
+    // Get basic counts in parallel
     const [
       totalLeads,
       hotLeads,
       totalMessages,
       activeVisitors,
-      leadStats,
-      messageStats,
     ] = await Promise.all([
       LeadModel.countDocuments({ createdAt: { $gte: startDate } }),
       LeadModel.countDocuments({
@@ -36,66 +35,74 @@ export async function GET(request: NextRequest) {
       }),
       MessageModel.countDocuments({ timestamp: { $gte: startDate } }),
       VisitorModel.countDocuments({
-        lastSeenAt: { $gte: new Date(Date.now() - 300000) },
+        lastSeenAt: { $gte: new Date(Date.now() - 300000) }, // 5 minutes ago
       }),
-      LeadModel.aggregate<{
-        _id: { date: string };
-        count: number;
-        totalLeadScore: number;
-      }>([
+    ]);
+
+    // Get aggregated stats in parallel
+    const [leadStats, messageStats] = await Promise.all([
+      LeadModel.aggregate([
         {
           $match: { createdAt: { $gte: startDate } },
         },
         {
           $group: {
             _id: {
-              date: {
-                $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
-              },
+              $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
             },
             count: { $sum: 1 },
             totalLeadScore: { $sum: { $ifNull: ["$leadScore", 0] } },
           },
         },
         {
-          $sort: { "_id.date": 1 },
+          $sort: { "_id": 1 },
+        },
+        {
+          $project: {
+            date: "$_id",
+            count: 1,
+            totalLeadScore: 1,
+            _id: 0,
+          },
         },
       ]),
-      MessageModel.aggregate<{
-        _id: { date: string };
-        count: number;
-      }>([
+      MessageModel.aggregate([
         {
           $match: { timestamp: { $gte: startDate } },
         },
         {
           $group: {
             _id: {
-              date: {
-                $dateToString: { format: "%Y-%m-%d", date: "$timestamp" },
-              },
+              $dateToString: { format: "%Y-%m-%d", date: "$timestamp" },
             },
             count: { $sum: 1 },
           },
         },
         {
-          $sort: { "_id.date": 1 },
+          $sort: { "_id": 1 },
+        },
+        {
+          $project: {
+            date: "$_id",
+            count: 1,
+            _id: 0,
+          },
         },
       ]),
     ]);
 
-    const dailyLeads = leadStats.map((item) => ({
-      date: item._id.date,
+    const dailyLeads = leadStats.map((item: any) => ({
+      date: item.date,
       count: item.count,
     }));
 
-    const dailyChats = messageStats.map((item) => ({
-      date: item._id.date,
+    const dailyChats = messageStats.map((item: any) => ({
+      date: item.date,
       count: item.count,
     }));
 
     const totalLeadScore = leadStats.reduce(
-      (sum, item) => sum + item.totalLeadScore,
+      (sum: number, item: any) => sum + item.totalLeadScore,
       0,
     );
 
